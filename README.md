@@ -2,6 +2,8 @@
 
 A cross-platform filesystem monitoring tool, written in Rust. Inspired by [DirectoryMonitor](https://directorymonitor.com) for Windows.
 
+English | [中文](README.zh_CN.md)
+
 ## Features
 
 - **Real-time monitoring** — Detects file creation, modification, deletion, renames, and access

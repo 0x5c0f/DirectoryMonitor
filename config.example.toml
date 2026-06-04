@@ -1,67 +1,212 @@
-# Directory Monitor Configuration
-# Copy this file to config.toml and customize.
+# =============================================================================
+# Directory Monitor 配置文件
+# =============================================================================
+# 复制此文件为 config.toml 并根据需要修改。
+# 用法: ./directory-monitor -c config.toml run
 
+# -----------------------------------------------------------------------------
+# 全局设置
+# -----------------------------------------------------------------------------
 [general]
+# 是否以系统服务模式运行（Windows 服务 / systemd / launchd）
+# true: 后台运行，无需用户登录
+# false: 前台运行，适合手动启动或调试
 service_mode = false
+
+# 是否在系统托盘显示气泡通知（仅 GUI 模式有效）
 balloon_notifications = true
 
-# Monitor a specific directory
+# -----------------------------------------------------------------------------
+# 监控目标（可配置多个，每个 [[watches]] 块为一个独立目标）
+# -----------------------------------------------------------------------------
 [[watches]]
+# 要监控的目录路径（绝对路径）
 path = "/home/user/documents"
+
+# 是否递归监控子目录
+# true: 监控该目录及所有子目录
+# false: 仅监控该目录本身
 recursive = true
+
+# 文件名包含过滤（glob 模式，匹配文件名而非完整路径）
+# 留空或不配置 = 监控所有文件
+# 示例: ["*.txt", "*.doc", "*.pdf", "*.rs"]
 include = ["*.txt", "*.doc", "*.pdf"]
+
+# 文件名排除过滤（glob 模式，优先级高于 include）
+# 匹配到的文件会被忽略，即使它符合 include 规则
+# 示例: ["*.tmp", "~*", "*.swp", ".git", "node_modules"]
 exclude = ["*.tmp", "~*", "*.swp"]
+
+# 事件类型过滤（只接收指定类型的事件，其余丢弃）
+# 留空或不配置 = 接收所有事件类型
+#
+# 可选值（对齐 inotifywait 风格）:
+#   "create"        - 文件/目录创建
+#   "modify"        - 文件内容写入
+#   "attrib"        - 元数据变更（权限、时间戳、所有者）
+#   "close_write"   - 写入后关闭（最可靠的"写完成"信号）
+#   "close_nowrite" - 只读后关闭
+#   "open"          - 文件打开
+#   "moved_to"      - 文件移入监控目录
+#   "moved_from"    - 文件移出监控目录
+#   "delete"        - 文件/目录删除
+#   "rename"        - 重命名（含源路径和目标路径）
+#   "access"        - 文件内容读取
 event_types = ["created", "modified", "deleted", "renamed"]
+
+# 此目标的独立日志文件路径（可选）
+# 设置后，该目标的事件会写入此文件
+# 不设置 = 使用全局 [logging] 配置
 # log_file = "/var/log/dirmon-documents.log"
-# log_format = "%timestamp% [%event%] %path% (%user%)"
+
+# 此目标的独立日志格式（可选，不设置则使用全局 [logging].format）
+# 支持的占位符:
+#   %file%      - 文件名
+#   %directory% - 父目录路径
+#   %event%     - 事件类型（如 CREATE、MODIFY）
+#   %path%      - 完整路径
+#   %target%    - 重命名目标路径（仅 rename 事件）
+#   %timestamp% - 事件时间戳（RFC3339 格式）
+#   %user%      - 操作用户（PRO 功能，不可用时显示 unknown）
+#   %process%   - 操作进程（PRO 功能，不可用时显示 unknown）
+# log_format = "%timestamp% [%event%] %path%"
+
+# 事件触发时执行的脚本/命令（可选）
+# 脚本通过命令行参数接收事件上下文（使用下方 log_format 相同的占位符）
 # script = "/usr/local/bin/notify.sh"
+
+# 脚本执行模式:
+#   "async" - 异步执行，不阻塞事件处理（默认）
+#   "sync"  - 同步执行，等待脚本完成后才处理下一个事件
 # script_mode = "async"
+
+# 此目标的邮件通知收件人列表（可选，需配合 [notifications.email] 使用）
 # email_recipients = ["admin@example.com"]
 
-# Monitor another directory with different settings
+# -----------------------------------------------------------------------------
+# 第二个监控目标（示例，取消注释即可启用）
+# -----------------------------------------------------------------------------
 # [[watches]]
 # path = "/var/www/uploads"
 # recursive = true
-# include = ["*.jpg", "*.png", "*.gif"]
-# exclude = ["thumb_*"]
+# include = ["*.jpg", "*.png", "*.gif", "*.webp"]
+# exclude = ["thumb_*", ".DS_Store"]
+# event_types = ["create", "delete"]
 # email_recipients = ["webmaster@example.com"]
 
-# Email notification settings
+# -----------------------------------------------------------------------------
+# 邮件通知设置
+# -----------------------------------------------------------------------------
 [notifications.email]
+# 是否启用邮件通知
 enabled = false
+
+# SMTP 服务器地址
 smtp_server = "smtp.gmail.com"
+
+# SMTP 端口（587 = STARTTLS，465 = SSL/TLS，25 = 明文）
 smtp_port = 587
+
+# SMTP 登录用户名
 username = "your-email@gmail.com"
+
+# SMTP 登录密码（建议使用应用专用密码）
 password = "your-app-password"
+
+# 发件人地址
 from_address = "dirmon@yourdomain.com"
+
+# 是否使用 TLS 加密
 use_tls = true
+
+# 批量发送：累积多少事件后合并为一封邮件（0 = 每个事件单独发送）
 batch_size = 10
+
+# 批量发送：等待多少秒后强制发送（即使未达到 batch_size）
 batch_timeout_secs = 60
+
+# 节流：每分钟最多发送多少封邮件（防止高频事件导致邮件轰炸）
 max_per_minute = 10
 
-# Syslog settings
+# -----------------------------------------------------------------------------
+# Syslog 设置
+# -----------------------------------------------------------------------------
 [notifications.syslog]
+# 是否启用 Syslog
 enabled = false
+
+# Syslog 服务器地址
 server = "localhost"
+
+# Syslog 服务器端口
 port = 514
+
+# 协议格式:
+#   "rfc3164" - 传统 BSD Syslog
+#   "rfc5424" - 现代 Syslog（默认，支持结构化数据）
 format = "rfc5424"
+
+# 设施级别（facility）:
+#   "kern", "user", "mail", "daemon", "auth", "syslog",
+#   "lpr", "news", "uucp", "cron", "authpriv", "ftp",
+#   "local0" ~ "local7"
 facility = "user"
+
+# 自定义消息格式（可选，使用与 log_format 相同的占位符）
+# 不设置 = 使用默认格式 "%event%: %path%"
 # message_format = "%event%: %path% by %user%"
 
-# Sound alert settings
+# -----------------------------------------------------------------------------
+# 声音告警设置
+# -----------------------------------------------------------------------------
 [notifications.sound]
+# 是否启用声音告警
 enabled = false
+
+# WAV 音频文件路径（仅支持 .wav 格式）
 # file = "/usr/share/sounds/alert.wav"
+
+# 是否循环播放直到用户查看界面
+# true: 持续播放直到用户打开 GUI 窗口
+# false: 只播放一次
 loop_until_viewed = false
 
-# Database settings
+# -----------------------------------------------------------------------------
+# 数据库设置
+# -----------------------------------------------------------------------------
 [database]
+# 是否启用事件持久化存储（SQLite）
+# true: 事件写入数据库，支持历史查询
+# false: 事件仅输出到日志/通知，不持久化
 enabled = true
+
+# SQLite 数据库文件路径
 path = "directory-monitor.db"
 
-# Logging settings
+# -----------------------------------------------------------------------------
+# 日志设置
+# -----------------------------------------------------------------------------
 [logging]
+# 全局日志文件路径（可选）
+# 设置后，所有监控目标的事件都写入此文件
+# 不设置 = 仅输出到终端（stdout）
 # file = "/var/log/directory-monitor.log"
+
+# 全局日志格式（各目标可通过 [[watches]].log_format 覆盖）
+# 支持的占位符详见上方 [[watches]].log_format 说明
 format = "%timestamp% [%event%] %path%"
+
+# 日志文件轮转策略:
+#   "daily"   - 按天轮转
+#   "monthly" - 按月轮转
+#   "never"   - 不轮转（单文件持续追加）
 rotation = "daily"
+
+# 应用日志级别（控制 tracing 日志详细程度）:
+#   "trace" - 最详细
+#   "debug" - 调试信息
+#   "info"  - 一般信息（默认）
+#   "warn"  - 仅警告和错误
+#   "error" - 仅错误
 level = "info"
