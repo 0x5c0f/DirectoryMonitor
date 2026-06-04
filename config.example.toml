@@ -1,0 +1,67 @@
+# Directory Monitor Configuration
+# Copy this file to config.toml and customize.
+
+[general]
+service_mode = false
+balloon_notifications = true
+
+# Monitor a specific directory
+[[watches]]
+path = "/home/user/documents"
+recursive = true
+include = ["*.txt", "*.doc", "*.pdf"]
+exclude = ["*.tmp", "~*", "*.swp"]
+event_types = ["created", "modified", "deleted", "renamed"]
+# log_file = "/var/log/dirmon-documents.log"
+# log_format = "%timestamp% [%event%] %path% (%user%)"
+# script = "/usr/local/bin/notify.sh"
+# script_mode = "async"
+# email_recipients = ["admin@example.com"]
+
+# Monitor another directory with different settings
+# [[watches]]
+# path = "/var/www/uploads"
+# recursive = true
+# include = ["*.jpg", "*.png", "*.gif"]
+# exclude = ["thumb_*"]
+# email_recipients = ["webmaster@example.com"]
+
+# Email notification settings
+[notifications.email]
+enabled = false
+smtp_server = "smtp.gmail.com"
+smtp_port = 587
+username = "your-email@gmail.com"
+password = "your-app-password"
+from_address = "dirmon@yourdomain.com"
+use_tls = true
+batch_size = 10
+batch_timeout_secs = 60
+max_per_minute = 10
+
+# Syslog settings
+[notifications.syslog]
+enabled = false
+server = "localhost"
+port = 514
+format = "rfc5424"
+facility = "user"
+# message_format = "%event%: %path% by %user%"
+
+# Sound alert settings
+[notifications.sound]
+enabled = false
+# file = "/usr/share/sounds/alert.wav"
+loop_until_viewed = false
+
+# Database settings
+[database]
+enabled = true
+path = "directory-monitor.db"
+
+# Logging settings
+[logging]
+# file = "/var/log/directory-monitor.log"
+format = "%timestamp% [%event%] %path%"
+rotation = "daily"
+level = "info"

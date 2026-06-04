@@ -1,0 +1,13 @@
+[package]
+name = "dm-watcher"
+description = "Filesystem monitoring engine for Directory Monitor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+dm-core = { workspace = true }
+notify = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }

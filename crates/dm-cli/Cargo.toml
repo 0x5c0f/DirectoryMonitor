@@ -1,0 +1,25 @@
+[package]
+name = "dm-cli"
+description = "CLI entry point for Directory Monitor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "directory-monitor"
+path = "src/main.rs"
+
+[dependencies]
+dm-core = { workspace = true }
+dm-watcher = { workspace = true }
+dm-processor = { workspace = true }
+dm-storage = { workspace = true }
+dm-notify = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+clap = { workspace = true }
+chrono = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }

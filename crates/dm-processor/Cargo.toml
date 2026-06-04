@@ -1,0 +1,13 @@
+[package]
+name = "dm-processor"
+description = "Event processing: filtering, deduplication, batching"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+dm-core = { workspace = true }
+globset = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }

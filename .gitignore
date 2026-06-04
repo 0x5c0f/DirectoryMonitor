@@ -1,0 +1,22 @@
+# Rust build artifacts
+/target/
+dist/
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# User config (keep example config)
+/config.toml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
