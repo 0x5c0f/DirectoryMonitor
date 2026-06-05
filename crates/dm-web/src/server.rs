@@ -5,6 +5,7 @@ use axum::response::Html;
 use axum::routing::{delete, get, post, put};
 use axum::Router;
 use dm_core::config::AppConfig;
+use dm_metrics::MetricsRegistry;
 use dm_processor::EventFilter;
 use dm_storage::EventStore;
 use dm_watcher::WatcherManager;
@@ -27,6 +28,7 @@ pub struct AppState {
     pub tokens: Arc<RwLock<HashSet<String>>>,
     pub watcher_manager: Arc<WatcherManager>,
     pub filters: Arc<RwLock<Vec<(PathBuf, EventFilter)>>>,
+    pub metrics: Arc<MetricsRegistry>,
 }
 
 /// Run the axum web server.
@@ -37,6 +39,7 @@ pub async fn run_server(
     event_tx: broadcast::Sender<EventPayload>,
     watcher_manager: Arc<WatcherManager>,
     filters: Arc<RwLock<Vec<(PathBuf, EventFilter)>>>,
+    metrics: Arc<MetricsRegistry>,
 ) -> Result<(), String> {
     let addr = format!("{}:{}", config.server.bind, config.server.port);
 
@@ -48,6 +51,7 @@ pub async fn run_server(
         tokens: Arc::new(RwLock::new(HashSet::new())),
         watcher_manager,
         filters,
+        metrics,
     };
 
     let app = Router::new()
@@ -64,6 +68,8 @@ pub async fn run_server(
         .route("/api/auth/status", get(auth_status_handler))
         .route("/api/auth/login", post(auth_login_handler))
         .route("/api/auth/verify", get(auth_verify_handler))
+        .route("/metrics", get(metrics_prometheus_handler))
+        .route("/api/metrics/chart", get(metrics_chart_handler))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&addr)
@@ -181,6 +187,25 @@ async fn auth_verify_handler(
     }
 }
 
+// ── Metrics ───────────────────────────────────────────────────────────────────
+
+/// GET /metrics — Prometheus text format (no auth required for scraping).
+async fn metrics_prometheus_handler(
+    State(state): State<AppState>,
+) -> String {
+    state.metrics.prometheus()
+}
+
+/// GET /api/metrics/chart — JSON chart data for the frontend dashboard.
+async fn metrics_chart_handler(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<axum::response::Json<serde_json::Value>, StatusCode> {
+    check_auth(&headers, &state).await?;
+    let chart = state.metrics.chart_json();
+    Ok(axum::response::Json(serde_json::to_value(chart).unwrap_or_default()))
+}
+
 // ── Pages ─────────────────────────────────────────────────────────────────────
 
 /// Serve the embedded HTML frontend.
@@ -248,6 +273,14 @@ async fn handle_ws(mut socket: WebSocket, state: AppState) {
 // ── REST API ──────────────────────────────────────────────────────────────────
 
 /// GET /api/events — return paginated events from the database.
+///
+/// Query parameters:
+/// - page: page number (default 1)
+/// - per_page: items per page (default 50, max 200)
+/// - search: search in path and target_path
+/// - types: comma-separated event types
+/// - after: ISO 8601 timestamp (inclusive start)
+/// - before: ISO 8601 timestamp (inclusive end)
 async fn events_handler(
     headers: HeaderMap,
     Query(params): Query<std::collections::HashMap<String, String>>,
@@ -262,11 +295,13 @@ async fn events_handler(
         .get("types")
         .map(|t| t.split(',').map(|s| s.trim().to_uppercase()).filter(|s| !s.is_empty()).collect())
         .unwrap_or_default();
+    let after = params.get("after").map(|s| s.as_str()).filter(|s| !s.is_empty());
+    let before = params.get("before").map(|s| s.as_str()).filter(|s| !s.is_empty());
     let offset = (page - 1) * per_page;
 
     let (events, total) = if let Some(ref store) = state.store {
-        let total = store.count_filtered(&event_types, None, search).await.unwrap_or(0);
-        let evts = store.query(per_page, offset, &event_types, None, search).await.unwrap_or_default();
+        let total = store.count_filtered(&event_types, None, search, after, before).await.unwrap_or(0);
+        let evts = store.query(per_page, offset, &event_types, None, search, after, before).await.unwrap_or_default();
         let events: Vec<serde_json::Value> = evts
             .iter()
             .map(|e| {
@@ -287,6 +322,12 @@ async fn events_handler(
         "page": page,
         "per_page": per_page,
         "total_pages": total_pages,
+        "filters": {
+            "search": search,
+            "types": event_types,
+            "after": after,
+            "before": before,
+        }
     })))
 }
 
@@ -651,11 +692,20 @@ async fn watchers_reload_handler(
                 .collect();
             *state.filters.write().await = new_filters;
 
+            // Update metrics
+            let net_change = result.added.len() as i64 - result.removed.len() as i64;
+            if net_change > 0 {
+                state.metrics.active_watchers.add(net_change);
+            } else if net_change < 0 {
+                state.metrics.active_watchers.add(net_change);
+            }
+
             info!(
-                "Reloaded watchers: added={}, removed={}, kept={}",
+                "Reloaded watchers: added={}, removed={}, kept={}, active={}",
                 result.added.len(),
                 result.removed.len(),
-                result.kept.len()
+                result.kept.len(),
+                state.metrics.active_watchers.get()
             );
 
             Ok(axum::response::Json(serde_json::json!({
@@ -663,6 +713,7 @@ async fn watchers_reload_handler(
                 "added": result.added.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
                 "removed": result.removed.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
                 "kept": result.kept.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
+                "active_watchers": state.metrics.active_watchers.get(),
             })))
         }
         Err(e) => {
@@ -672,5 +723,55 @@ async fn watchers_reload_handler(
                 "error": e,
             })))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::HeaderValue;
+
+    #[test]
+    fn test_extract_token_valid() {
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", HeaderValue::from_static("Bearer my-secret-token-123"));
+
+        let token = extract_token(&headers);
+        assert_eq!(token, Some("my-secret-token-123".to_string()));
+    }
+
+    #[test]
+    fn test_extract_token_missing() {
+        let headers = HeaderMap::new();
+        let token = extract_token(&headers);
+        assert_eq!(token, None);
+    }
+
+    #[test]
+    fn test_extract_token_invalid_format() {
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", HeaderValue::from_static("Basic dXNlcjpwYXNz"));
+
+        let token = extract_token(&headers);
+        assert_eq!(token, None);
+    }
+
+    #[test]
+    fn test_extract_token_empty_bearer() {
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", HeaderValue::from_static("Bearer "));
+
+        let token = extract_token(&headers);
+        assert_eq!(token, Some("".to_string()));
+    }
+
+    #[test]
+    fn test_extract_token_invalid_header_value() {
+        let mut headers = HeaderMap::new();
+        // Non-ASCII bytes are invalid header values
+        headers.insert("authorization", HeaderValue::from_bytes(&[0xFF, 0xFE]).unwrap());
+
+        let token = extract_token(&headers);
+        assert_eq!(token, None);
     }
 }

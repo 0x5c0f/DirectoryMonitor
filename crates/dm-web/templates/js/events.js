@@ -202,3 +202,114 @@ searchInput.addEventListener('input', () => {
   clearTimeout(searchDebounce);
   searchDebounce = setTimeout(() => { loadHistory(1); }, 300);
 });
+
+// ── Time Range Filter ───────────────────────────────
+let currentTimeAfter = null;
+let currentTimeBefore = null;
+
+function setTimeRange(range) {
+  // Update button states
+  document.querySelectorAll('.time-preset').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.range === range);
+  });
+
+  // Hide custom time panel
+  document.getElementById('customTime').style.display = 'none';
+
+  const now = new Date();
+  switch (range) {
+    case 'all':
+      currentTimeAfter = null;
+      currentTimeBefore = null;
+      break;
+    case '1h':
+      currentTimeAfter = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+      currentTimeBefore = null;
+      break;
+    case 'today':
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      currentTimeAfter = today.toISOString();
+      currentTimeBefore = null;
+      break;
+    case '7d':
+      currentTimeAfter = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      currentTimeBefore = null;
+      break;
+  }
+
+  loadHistory(1);
+}
+
+function toggleCustomTime() {
+  const panel = document.getElementById('customTime');
+  const isVisible = panel.style.display !== 'none';
+  panel.style.display = isVisible ? 'none' : 'flex';
+
+  // Update button state
+  document.querySelectorAll('.time-preset').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.range === 'custom');
+  });
+
+  if (!isVisible) {
+    // Set default values
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    document.getElementById('timeAfter').value = formatDateTimeLocal(yesterday);
+    document.getElementById('timeBefore').value = formatDateTimeLocal(now);
+  }
+}
+
+function formatDateTimeLocal(date) {
+  return date.getFullYear() + '-' +
+    String(date.getMonth() + 1).padStart(2, '0') + '-' +
+    String(date.getDate()).padStart(2, '0') + 'T' +
+    String(date.getHours()).padStart(2, '0') + ':' +
+    String(date.getMinutes()).padStart(2, '0');
+}
+
+function applyCustomTime() {
+  const afterInput = document.getElementById('timeAfter').value;
+  const beforeInput = document.getElementById('timeBefore').value;
+
+  if (afterInput) {
+    currentTimeAfter = new Date(afterInput).toISOString();
+  }
+  if (beforeInput) {
+    currentTimeBefore = new Date(beforeInput).toISOString();
+  }
+
+  loadHistory(1);
+}
+
+// Update loadHistory to include time range
+const originalLoadHistory = loadHistory;
+loadHistory = async function(page) {
+  page = page || currentPage || 1;
+  const searchVal = searchInput.value.trim();
+  let url = '/api/events?page=' + page + '&per_page=' + PER_PAGE;
+  if (searchVal) url += '&search=' + encodeURIComponent(searchVal);
+  // 传递事件类型过滤（非全选时）
+  if (selectedTypes.size > 0 && selectedTypes.size < EVENT_TYPES.length) {
+    url += '&types=' + encodeURIComponent([...selectedTypes].join(','));
+  }
+  // 传递时间范围
+  if (currentTimeAfter) {
+    url += '&after=' + encodeURIComponent(currentTimeAfter);
+  }
+  if (currentTimeBefore) {
+    url += '&before=' + encodeURIComponent(currentTimeBefore);
+  }
+  try {
+    const resp = await fetch(url, { headers: authHeaders() });
+    const data = await resp.json();
+    if (data.events) {
+      events = data.events;
+      liveEvents = [];  // 加载新页时清除实时事件
+      currentPage = data.page || 1;
+      totalPages = data.total_pages || 1;
+      localStorage.setItem('dm_events_page', currentPage);
+      updatePagination(data.total || 0);
+      renderEvents();
+    }
+  } catch {}
+};

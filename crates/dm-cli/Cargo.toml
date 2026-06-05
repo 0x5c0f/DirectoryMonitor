@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 dm-core = { workspace = true }
+dm-metrics = { workspace = true }
 dm-watcher = { workspace = true }
 dm-processor = { workspace = true }
 dm-storage = { workspace = true }

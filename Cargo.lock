@@ -379,12 +379,13 @@ dependencies = [
 
 [[package]]
 name = "dm-cli"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "chrono",
  "clap",
  "dm-core",
+ "dm-metrics",
  "dm-notify",
  "dm-processor",
  "dm-storage",
@@ -399,11 +400,12 @@ dependencies = [
 
 [[package]]
 name = "dm-core"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "chrono",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "toml",
  "tracing",
@@ -411,8 +413,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "dm-metrics"
+version = "0.2.1"
+dependencies = [
+ "chrono",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "dm-notify"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "chrono",
  "dm-core",
@@ -424,7 +438,7 @@ dependencies = [
 
 [[package]]
 name = "dm-processor"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "chrono",
  "dm-core",
@@ -435,7 +449,7 @@ dependencies = [
 
 [[package]]
 name = "dm-storage"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "chrono",
  "dm-core",
@@ -448,7 +462,7 @@ dependencies = [
 
 [[package]]
 name = "dm-watcher"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "chrono",
  "dm-core",
@@ -460,16 +474,20 @@ dependencies = [
 
 [[package]]
 name = "dm-web"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "axum",
  "dm-core",
+ "dm-metrics",
  "dm-processor",
  "dm-storage",
  "dm-watcher",
+ "http-body-util",
  "serde",
  "serde_json",
  "tokio",
+ "toml",
+ "tower",
  "tracing",
  "uuid",
 ]

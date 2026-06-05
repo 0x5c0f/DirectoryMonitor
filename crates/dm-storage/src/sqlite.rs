@@ -96,6 +96,8 @@ impl EventStore {
         event_types: &[String],
         watch_root: Option<&str>,
         search: Option<&str>,
+        after: Option<&str>,
+        before: Option<&str>,
     ) -> Result<Vec<FsEvent>, StorageError> {
         let conn = self.conn.lock().await;
         let mut sql = String::from(
@@ -122,6 +124,14 @@ impl EventStore {
                 param_values.push(Box::new(pattern.clone()));
                 param_values.push(Box::new(pattern));
             }
+        }
+        if let Some(after_ts) = after {
+            sql.push_str(" AND timestamp >= ?");
+            param_values.push(Box::new(after_ts.to_string()));
+        }
+        if let Some(before_ts) = before {
+            sql.push_str(" AND timestamp <= ?");
+            param_values.push(Box::new(before_ts.to_string()));
         }
 
         sql.push_str(" ORDER BY timestamp DESC LIMIT ? OFFSET ?");
@@ -195,6 +205,8 @@ impl EventStore {
         event_types: &[String],
         watch_root: Option<&str>,
         search: Option<&str>,
+        after: Option<&str>,
+        before: Option<&str>,
     ) -> Result<usize, StorageError> {
         let conn = self.conn.lock().await;
         let mut sql = String::from("SELECT COUNT(*) FROM events WHERE 1=1");
@@ -218,6 +230,14 @@ impl EventStore {
                 param_values.push(Box::new(pattern.clone()));
                 param_values.push(Box::new(pattern));
             }
+        }
+        if let Some(after_ts) = after {
+            sql.push_str(" AND timestamp >= ?");
+            param_values.push(Box::new(after_ts.to_string()));
+        }
+        if let Some(before_ts) = before {
+            sql.push_str(" AND timestamp <= ?");
+            param_values.push(Box::new(before_ts.to_string()));
         }
 
         let params_ref: Vec<&dyn rusqlite::types::ToSql> =

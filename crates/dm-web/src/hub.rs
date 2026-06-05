@@ -24,3 +24,55 @@ impl From<&FsEvent> for EventPayload {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dm_core::event::EventType;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_event_payload_from_fsevent() {
+        let event = FsEvent::new(
+            EventType::Created,
+            PathBuf::from("/home/user/file.txt"),
+            PathBuf::from("/home/user"),
+        );
+
+        let payload = EventPayload::from(&event);
+        assert_eq!(payload.id, event.id.to_string());
+        assert_eq!(payload.event_type, "CREATE");
+        assert_eq!(payload.path, "/home/user/file.txt");
+        assert_eq!(payload.watch_root, "/home/user");
+        assert!(payload.target_path.is_none());
+    }
+
+    #[test]
+    fn test_event_payload_with_target() {
+        let event = FsEvent::new(
+            EventType::Renamed,
+            PathBuf::from("/old.txt"),
+            PathBuf::from("/"),
+        )
+        .with_target(PathBuf::from("/new.txt"));
+
+        let payload = EventPayload::from(&event);
+        assert_eq!(payload.event_type, "RENAME");
+        assert_eq!(payload.path, "/old.txt");
+        assert_eq!(payload.target_path, Some("/new.txt".to_string()));
+    }
+
+    #[test]
+    fn test_event_payload_timestamp_format() {
+        let event = FsEvent::new(
+            EventType::Modified,
+            PathBuf::from("/file.txt"),
+            PathBuf::from("/"),
+        );
+
+        let payload = EventPayload::from(&event);
+        // Should contain 'T' separator (RFC 3339 basic check)
+        assert!(payload.timestamp.contains('T'));
+        assert!(payload.timestamp.contains('Z') || payload.timestamp.contains('+'));
+    }
+}

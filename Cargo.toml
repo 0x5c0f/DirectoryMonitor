@@ -6,12 +6,13 @@ members = [
     "crates/dm-processor",
     "crates/dm-storage",
     "crates/dm-notify",
+    "crates/dm-metrics",
     "crates/dm-web",
     "crates/dm-cli",
 ]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 license = "MIT"
 rust-version = "1.75"
@@ -24,6 +25,7 @@ dm-processor = { path = "crates/dm-processor" }
 dm-storage = { path = "crates/dm-storage" }
 dm-notify = { path = "crates/dm-notify" }
 dm-web = { path = "crates/dm-web" }
+dm-metrics = { path = "crates/dm-metrics" }
 
 # Web framework
 axum = { version = "0.8", features = ["ws"] }

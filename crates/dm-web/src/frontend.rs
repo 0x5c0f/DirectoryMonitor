@@ -8,6 +8,7 @@
 /// - `js/events.js` — event rendering, WebSocket, pagination
 /// - `js/modals.js` — modal dialog helpers
 /// - `js/settings.js` — settings panel, watcher CRUD
+/// - `js/dashboard.js` — metrics charts and dashboard
 /// - `js/app.js` — initialization
 ///
 /// They are composed into a single HTML response at compile time.
@@ -26,6 +27,8 @@ pub static INDEX_HTML: LazyLock<String> = LazyLock::new(|| {
         include_str!("../templates/js/modals.js"),
         "\n",
         include_str!("../templates/js/settings.js"),
+        "\n",
+        include_str!("../templates/js/dashboard.js"),
         "\n",
         include_str!("../templates/js/app.js"),
     );

@@ -35,9 +35,15 @@ recursive = true
 # 示例: ["*.txt", "*.doc", "*.pdf", "*.rs"]
 include = ["*.txt", "*.doc", "*.pdf"]
 
-# 文件名排除过滤（glob 模式，优先级高于 include）
-# 匹配到的文件会被忽略，即使它符合 include 规则
-# 示例: ["*.tmp", "~*", "*.swp", ".git", "node_modules"]
+# 排除过滤（标准 glob 模式，优先级高于 include）
+# 匹配规则：
+#   - 匹配完整路径: "**/.git/**" 排除 .git 目录下所有文件
+#   - 匹配文件名: "*.tmp", "~*", "*.swp"
+#
+# 注意: ".git" 只匹配名为 .git 的文件，不匹配 .git 目录
+#       要排除目录及其内容，请使用 "**/.git/**" 或 "**/node_modules/**"
+#
+# 示例: ["*.tmp", "~*", "*.swp", "**/.git/**", "**/node_modules/**"]
 exclude = ["*.tmp", "~*", "*.swp"]
 
 # 事件类型过滤（只接收指定类型的事件，其余丢弃）

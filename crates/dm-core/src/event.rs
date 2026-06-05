@@ -171,3 +171,199 @@ impl FsEvent {
         result
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn make_event(event_type: EventType, path: &str) -> FsEvent {
+        FsEvent::new(event_type, PathBuf::from(path), PathBuf::from("/watch"))
+    }
+
+    // === EventType Display ===
+
+    #[test]
+    fn test_event_type_display() {
+        assert_eq!(EventType::Created.to_string(), "CREATE");
+        assert_eq!(EventType::Modified.to_string(), "MODIFY");
+        assert_eq!(EventType::Attrib.to_string(), "ATTRIB");
+        assert_eq!(EventType::CloseWrite.to_string(), "CLOSE_WRITE");
+        assert_eq!(EventType::CloseNoWrite.to_string(), "CLOSE_NOWRITE");
+        assert_eq!(EventType::Opened.to_string(), "OPEN");
+        assert_eq!(EventType::MovedTo.to_string(), "MOVED_TO");
+        assert_eq!(EventType::MovedFrom.to_string(), "MOVED_FROM");
+        assert_eq!(EventType::Deleted.to_string(), "DELETE");
+        assert_eq!(EventType::Renamed.to_string(), "RENAME");
+        assert_eq!(EventType::Accessed.to_string(), "ACCESS");
+    }
+
+    // === EventType classification ===
+
+    #[test]
+    fn test_event_type_is_content_change() {
+        assert!(EventType::Created.is_content_change());
+        assert!(EventType::Modified.is_content_change());
+        assert!(EventType::CloseWrite.is_content_change());
+        assert!(EventType::MovedTo.is_content_change());
+        assert!(EventType::MovedFrom.is_content_change());
+        assert!(EventType::Deleted.is_content_change());
+        assert!(EventType::Renamed.is_content_change());
+
+        assert!(!EventType::Attrib.is_content_change());
+        assert!(!EventType::CloseNoWrite.is_content_change());
+        assert!(!EventType::Opened.is_content_change());
+        assert!(!EventType::Accessed.is_content_change());
+    }
+
+    #[test]
+    fn test_event_type_is_metadata_change() {
+        assert!(EventType::Attrib.is_metadata_change());
+
+        assert!(!EventType::Created.is_metadata_change());
+        assert!(!EventType::Modified.is_metadata_change());
+        assert!(!EventType::Deleted.is_metadata_change());
+        assert!(!EventType::Accessed.is_metadata_change());
+    }
+
+    #[test]
+    fn test_event_type_is_access() {
+        assert!(EventType::Accessed.is_access());
+        assert!(EventType::Opened.is_access());
+        assert!(EventType::CloseNoWrite.is_access());
+
+        assert!(!EventType::Created.is_access());
+        assert!(!EventType::Modified.is_access());
+        assert!(!EventType::Deleted.is_access());
+        assert!(!EventType::Attrib.is_access());
+    }
+
+    // === FsEvent::filename ===
+
+    #[test]
+    fn test_fsevent_filename_normal() {
+        let event = make_event(EventType::Created, "/home/user/file.txt");
+        assert_eq!(event.filename(), Some("file.txt"));
+    }
+
+    #[test]
+    fn test_fsevent_filename_nested() {
+        let event = make_event(EventType::Created, "/a/b/c/d.rs");
+        assert_eq!(event.filename(), Some("d.rs"));
+    }
+
+    #[test]
+    fn test_fsevent_filename_root() {
+        let event = make_event(EventType::Created, "/");
+        assert_eq!(event.filename(), None);
+    }
+
+    // === FsEvent::directory ===
+
+    #[test]
+    fn test_fsevent_directory_normal() {
+        let event = make_event(EventType::Created, "/home/user/file.txt");
+        assert_eq!(event.directory(), Some("/home/user"));
+    }
+
+    #[test]
+    fn test_fsevent_directory_root() {
+        let event = make_event(EventType::Created, "/file.txt");
+        assert_eq!(event.directory(), Some("/"));
+    }
+
+    // === FsEvent::format_with ===
+
+    #[test]
+    fn test_fsevent_format_with_all_placeholders() {
+        let event = FsEvent {
+            id: Uuid::new_v4(),
+            timestamp: chrono::DateTime::parse_from_rfc3339("2025-01-15T10:30:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+            event_type: EventType::Created,
+            path: PathBuf::from("/home/user/file.txt"),
+            target_path: Some(PathBuf::from("/home/user/new.txt")),
+            user: Some("alice".to_string()),
+            process: Some("vim".to_string()),
+            watch_root: PathBuf::from("/home/user"),
+        };
+
+        let result = event.format_with("%event% %file% in %directory% by %user% via %process%");
+        assert_eq!(result, "CREATE file.txt in /home/user by alice via vim");
+    }
+
+    #[test]
+    fn test_fsevent_format_with_path_and_target() {
+        let event = FsEvent {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            event_type: EventType::Renamed,
+            path: PathBuf::from("/old/path.txt"),
+            target_path: Some(PathBuf::from("/new/path.txt")),
+            user: None,
+            process: None,
+            watch_root: PathBuf::from("/"),
+        };
+
+        let result = event.format_with("%path% -> %target%");
+        assert_eq!(result, "/old/path.txt -> /new/path.txt");
+    }
+
+    #[test]
+    fn test_fsevent_format_with_missing_optional_fields() {
+        let event = make_event(EventType::Modified, "/tmp/test.log");
+
+        let result = event.format_with("%event% %file% by %user% via %process%");
+        assert_eq!(result, "MODIFY test.log by unknown via unknown");
+    }
+
+    #[test]
+    fn test_fsevent_format_with_empty_template() {
+        let event = make_event(EventType::Created, "/file.txt");
+        assert_eq!(event.format_with(""), "");
+    }
+
+    #[test]
+    fn test_fsevent_format_with_no_placeholders() {
+        let event = make_event(EventType::Created, "/file.txt");
+        assert_eq!(event.format_with("hello world"), "hello world");
+    }
+
+    #[test]
+    fn test_fsevent_format_with_chinese_path() {
+        let event = make_event(EventType::Created, "/home/用户/文档.txt");
+        let result = event.format_with("%file% in %directory%");
+        assert_eq!(result, "文档.txt in /home/用户");
+    }
+
+    #[test]
+    fn test_fsevent_format_with_spaces_in_path() {
+        let event = make_event(EventType::Created, "/my folder/my file.txt");
+        let result = event.format_with("%file% at %path%");
+        assert_eq!(result, "my file.txt at /my folder/my file.txt");
+    }
+
+    // === FsEvent builder methods ===
+
+    #[test]
+    fn test_fsevent_with_target() {
+        let event = make_event(EventType::Renamed, "/old.txt")
+            .with_target(PathBuf::from("/new.txt"));
+        assert_eq!(event.target_path, Some(PathBuf::from("/new.txt")));
+    }
+
+    #[test]
+    fn test_fsevent_with_user() {
+        let event = make_event(EventType::Created, "/file.txt")
+            .with_user("bob".to_string());
+        assert_eq!(event.user, Some("bob".to_string()));
+    }
+
+    #[test]
+    fn test_fsevent_with_process() {
+        let event = make_event(EventType::Created, "/file.txt")
+            .with_process("git".to_string());
+        assert_eq!(event.process, Some("git".to_string()));
+    }
+}

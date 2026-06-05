@@ -66,7 +66,8 @@
       <span class="logo-text">Directory Monitor</span>
     </div>
     <div class="nav-tabs">
-      <button class="active" data-tab="events">事件日志</button>
+      <button class="active" data-tab="dashboard">仪表盘</button>
+      <button data-tab="events">事件日志</button>
       <button data-tab="settings">监控配置</button>
     </div>
     <div class="header-right">
@@ -98,8 +99,127 @@
     </div>
   </header>
 
+  <!-- Dashboard Tab -->
+  <div class="tab-content active" id="tab-dashboard">
+    <div class="dashboard">
+      <!-- System Status Cards -->
+      <div class="status-cards">
+        <div class="status-card">
+          <div class="status-card-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+            </svg>
+          </div>
+          <div class="status-card-info">
+            <div class="status-card-value" id="metric-events-total">0</div>
+            <div class="status-card-label">总事件数</div>
+          </div>
+        </div>
+        <div class="status-card">
+          <div class="status-card-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
+          <div class="status-card-info">
+            <div class="status-card-value" id="metric-uptime">0s</div>
+            <div class="status-card-label">运行时长</div>
+          </div>
+        </div>
+        <div class="status-card">
+          <div class="status-card-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </div>
+          <div class="status-card-info">
+            <div class="status-card-value" id="metric-watchers">0</div>
+            <div class="status-card-label">活跃监控</div>
+          </div>
+        </div>
+        <div class="status-card">
+          <div class="status-card-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </div>
+          <div class="status-card-info">
+            <div class="status-card-value" id="metric-db-size">0 B</div>
+            <div class="status-card-label">数据库大小</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts Row -->
+      <div class="charts-row">
+        <div class="chart-container">
+          <div class="chart-header">
+            <h3>事件趋势</h3>
+            <div class="chart-toggle">
+              <button class="chart-toggle-btn active" data-range="1h" onclick="switchTimeRange('1h')">1 小时</button>
+              <button class="chart-toggle-btn" data-range="7d" onclick="switchTimeRange('7d')">7 天</button>
+            </div>
+          </div>
+          <canvas id="chart-event-rate"></canvas>
+        </div>
+        <div class="chart-container chart-container-sm">
+          <div class="chart-header">
+            <h3>事件分布</h3>
+            <span class="chart-subtitle" id="chart-type-subtitle">按类型统计</span>
+          </div>
+          <canvas id="chart-event-types"></canvas>
+        </div>
+      </div>
+
+      <!-- Second Row -->
+      <div class="charts-row">
+        <div class="chart-container">
+          <div class="chart-header">
+            <h3>监控目标分布</h3>
+            <span class="chart-subtitle">按目录 × 类型</span>
+          </div>
+          <canvas id="chart-watch-roots"></canvas>
+        </div>
+        <div class="chart-container chart-container-sm">
+          <div class="chart-header">
+            <h3>通知统计</h3>
+            <span class="chart-subtitle">发送成功/失败</span>
+          </div>
+          <canvas id="chart-notifications"></canvas>
+        </div>
+      </div>
+
+      <!-- Pipeline Stats -->
+      <div class="pipeline-stats">
+        <h3>处理管道</h3>
+        <div class="pipeline-items">
+          <div class="pipeline-item">
+            <span class="pipeline-label">批次刷新</span>
+            <span class="pipeline-value" id="metric-batches">0</span>
+          </div>
+          <div class="pipeline-item">
+            <span class="pipeline-label">过滤丢弃</span>
+            <span class="pipeline-value" id="metric-dropped">0</span>
+          </div>
+          <div class="pipeline-item">
+            <span class="pipeline-label">去重合并</span>
+            <span class="pipeline-value" id="metric-deduped">0</span>
+          </div>
+          <div class="pipeline-item">
+            <span class="pipeline-label">队列深度</span>
+            <span class="pipeline-value" id="metric-queue">0</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Events Tab -->
-  <div class="tab-content active" id="tab-events">
+  <div class="tab-content" id="tab-events">
     <div class="toolbar">
       <div class="search-wrapper">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -119,6 +239,21 @@
             <button onclick="clearAllTypes()" type="button">清除</button>
           </div>
           <div id="typeCheckboxes"></div>
+        </div>
+      </div>
+      <div class="time-filter">
+        <div class="time-presets">
+          <button class="time-preset active" data-range="all" onclick="setTimeRange('all')">全部</button>
+          <button class="time-preset" data-range="1h" onclick="setTimeRange('1h')">1 小时</button>
+          <button class="time-preset" data-range="today" onclick="setTimeRange('today')">今天</button>
+          <button class="time-preset" data-range="7d" onclick="setTimeRange('7d')">7 天</button>
+          <button class="time-preset" data-range="custom" onclick="toggleCustomTime()">自定义</button>
+        </div>
+        <div class="custom-time" id="customTime" style="display:none">
+          <input type="datetime-local" id="timeAfter" placeholder="开始时间">
+          <span class="time-sep">至</span>
+          <input type="datetime-local" id="timeBefore" placeholder="结束时间">
+          <button class="btn-apply" onclick="applyCustomTime()">应用</button>
         </div>
       </div>
       <span class="count" id="count">0 条事件</span>

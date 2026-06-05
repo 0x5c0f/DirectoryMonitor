@@ -253,6 +253,9 @@ async fn run_serve(mut config: AppConfig, config_path: PathBuf, bind: &Option<St
         }
     }
 
+    // Create metrics registry
+    let metrics = Arc::new(dm_metrics::MetricsRegistry::new());
+
     // Create broadcast event channel
     let (event_tx, _) = broadcast::channel::<WatchEvent>(4096);
 
@@ -263,7 +266,10 @@ async fn run_serve(mut config: AppConfig, config_path: PathBuf, bind: &Option<St
     for watch_config in &config.watches {
         if watch_config.path.exists() {
             match watcher_manager.add_watcher(watch_config.clone()).await {
-                Ok(id) => info!("Added initial watcher[{}] for {}", id, watch_config.path.display()),
+                Ok(id) => {
+                    info!("Added initial watcher[{}] for {}", id, watch_config.path.display());
+                    metrics.active_watchers.inc();
+                }
                 Err(e) => warn!("Failed to add watcher for {}: {e}", watch_config.path.display()),
             }
         } else {
@@ -305,6 +311,7 @@ async fn run_serve(mut config: AppConfig, config_path: PathBuf, bind: &Option<St
     let process_filters = shared_filters.clone();
     let process_store = store.clone();
     let process_dedup = deduplicator.clone();
+    let process_metrics = metrics.clone();
 
     tokio::spawn(async move {
         let mut rx = process_tx.subscribe();
@@ -313,7 +320,10 @@ async fn run_serve(mut config: AppConfig, config_path: PathBuf, bind: &Option<St
                 Ok(watch_event) => {
                     // Unpack batch into individual events
                     let events = match watch_event {
-                        WatchEvent::Batch(events) => events,
+                        WatchEvent::Batch(events) => {
+                            process_metrics.batches_flushed.inc();
+                            events
+                        }
                         WatchEvent::Event(event) => vec![event],
                         WatchEvent::Error(msg) => {
                             error!("Watcher error: {}", msg);
@@ -327,7 +337,10 @@ async fn run_serve(mut config: AppConfig, config_path: PathBuf, bind: &Option<St
                             let mut dedup = process_dedup.lock().await;
                             dedup.process(event)
                         };
-                        let Some(event) = event else { continue };
+                        let Some(event) = event else {
+                            process_metrics.events_deduped.inc();
+                            continue;
+                        };
 
                         // Apply filter
                         let filters = process_filters.read().await;
@@ -337,8 +350,15 @@ async fn run_serve(mut config: AppConfig, config_path: PathBuf, bind: &Option<St
                             .map(|(_, f)| f.matches(&event))
                             .unwrap_or(true);
                         if !filtered {
+                            process_metrics.events_dropped.inc();
                             continue;
                         }
+
+                        // Record metrics
+                        process_metrics.record_event(
+                            &event.event_type.to_string(),
+                            &event.watch_root.to_string_lossy(),
+                        );
 
                         // Log the event
                         let log_format = process_config
@@ -386,6 +406,8 @@ async fn run_serve(mut config: AppConfig, config_path: PathBuf, bind: &Option<St
     let config_path_clone = config_path.clone();
     #[cfg(unix)]
     let filters_clone = shared_filters.clone();
+    #[cfg(unix)]
+    let metrics_clone = metrics.clone();
 
     #[cfg(unix)]
     tokio::spawn(async move {
@@ -415,6 +437,14 @@ async fn run_serve(mut config: AppConfig, config_path: PathBuf, bind: &Option<St
                                 .collect();
                             *filters_clone.write().await = new_filters;
 
+                            // Update watcher count
+                            let net_change = result.added.len() as i64 - result.removed.len() as i64;
+                            if net_change > 0 {
+                                metrics_clone.active_watchers.add(net_change);
+                            } else if net_change < 0 {
+                                metrics_clone.active_watchers.add(net_change); // negative value
+                            }
+
                             info!(
                                 "Reload complete: added={}, removed={}, kept={}",
                                 result.added.len(),
@@ -434,8 +464,21 @@ async fn run_serve(mut config: AppConfig, config_path: PathBuf, bind: &Option<St
         }
     });
 
+    // Spawn background task to update database size
+    let db_path = config.database.path.clone();
+    let metrics_db = metrics.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            if let Ok(metadata) = tokio::fs::metadata(&db_path).await {
+                metrics_db.db_size_bytes.set(metadata.len() as i64);
+            }
+        }
+    });
+
     tokio::select! {
-        result = dm_web::run_server(config, config_path, store_for_web, web_event_tx, watcher_manager, filters_for_web) => {
+        result = dm_web::run_server(config, config_path, store_for_web, web_event_tx, watcher_manager, filters_for_web, metrics) => {
             if let Err(e) = result {
                 error!("Web server error: {e}");
             }

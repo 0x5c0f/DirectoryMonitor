@@ -1,4 +1,6 @@
 // ── Auth ─────────────────────────────────────────────
+let authRequired = false;  // Track if authentication is configured
+
 function authHeaders() {
   return token ? { 'Authorization': 'Bearer ' + token } : {};
 }
@@ -9,7 +11,9 @@ async function checkAuth() {
     const statusResp = await fetch('/api/auth/status');
     if (statusResp.ok) {
       const statusData = await statusResp.json();
-      if (!statusData.auth_required) {
+      authRequired = statusData.auth_required || false;
+
+      if (!authRequired) {
         // No password configured — go directly to main page
         token = null;
         localStorage.removeItem('dm_token');
@@ -62,6 +66,15 @@ function showMain() {
   loadHistory();
   connect();
   loadConfig();
+
+  // Show/hide logout button based on auth requirement
+  logoutBtn.style.display = authRequired ? 'flex' : 'none';
+
+  // Initialize dashboard if it's the active tab
+  const activeTab = localStorage.getItem('dm_active_tab') || 'dashboard';
+  if (activeTab === 'dashboard') {
+    initDashboard();
+  }
 }
 
 loginBtn.addEventListener('click', doLogin);
@@ -120,8 +133,16 @@ function activateTab(tabName) {
 
 document.querySelectorAll('.nav-tabs button').forEach(btn => {
   btn.addEventListener('click', () => {
-    activateTab(btn.dataset.tab);
-    localStorage.setItem('dm_active_tab', btn.dataset.tab);
+    const tabName = btn.dataset.tab;
+    activateTab(tabName);
+    localStorage.setItem('dm_active_tab', tabName);
+
+    // Start/stop dashboard based on tab
+    if (tabName === 'dashboard') {
+      initDashboard();
+    } else {
+      stopDashboard();
+    }
   });
 });
 
