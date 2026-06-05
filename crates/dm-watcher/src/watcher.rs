@@ -4,7 +4,7 @@ use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher, Confi
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
-use tokio::sync::mpsc as tokio_mpsc;
+use tokio::sync::broadcast;
 use tracing::{debug, error, info};
 
 /// Event emitted by the watcher to consumers.
@@ -21,13 +21,15 @@ pub enum WatchEvent {
 /// Wraps the notify crate to provide filesystem monitoring with debouncing.
 pub struct FsWatcher {
     _watcher: RecommendedWatcher,
+    /// Thread ID where the debounce loop runs.
+    thread_id: Option<String>,
 }
 
 impl FsWatcher {
-    /// Create a new watcher that sends events to the provided channel.
+    /// Create a new watcher that sends events to the provided broadcast channel.
     /// Events are debounced with the given timeout.
     pub fn new(
-        tx: tokio_mpsc::UnboundedSender<WatchEvent>,
+        tx: broadcast::Sender<WatchEvent>,
         debounce_duration: Duration,
     ) -> Result<Self, String> {
         // Channel from notify (sync) to our processing thread
@@ -46,11 +48,21 @@ impl FsWatcher {
         .map_err(|e| format!("Failed to create watcher: {e}"))?;
 
         // Spawn a thread to receive events, debounce, and forward to async channel
-        std::thread::spawn(move || {
+        let handle = std::thread::spawn(move || {
             debounce_loop(notify_rx, tx, debounce_duration);
         });
 
-        Ok(Self { _watcher: watcher })
+        let thread_id = format!("{:?}", handle.thread().id());
+
+        Ok(Self {
+            _watcher: watcher,
+            thread_id: Some(thread_id),
+        })
+    }
+
+    /// Get the thread ID where this watcher's debounce loop runs.
+    pub fn thread_id(&self) -> Option<&str> {
+        self.thread_id.as_deref()
     }
 
     /// Add a directory to watch based on a WatchConfig.
@@ -92,7 +104,7 @@ impl FsWatcher {
 /// (same path + same type within the window).
 fn debounce_loop(
     rx: mpsc::Receiver<notify::Result<Event>>,
-    tx: tokio_mpsc::UnboundedSender<WatchEvent>,
+    tx: broadcast::Sender<WatchEvent>,
     debounce_duration: Duration,
 ) {
     let mut pending: Vec<FsEvent> = Vec::new();
@@ -114,10 +126,7 @@ fn debounce_loop(
                     let events: Vec<FsEvent> = pending.drain(..).collect();
 
                     debug!("Debounced batch: {} events", events.len());
-                    let _ = tx.send(WatchEvent::Batch(events.clone()));
-                    for event in events {
-                        let _ = tx.send(WatchEvent::Event(event));
-                    }
+                    let _ = tx.send(WatchEvent::Batch(events));
                 }
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {

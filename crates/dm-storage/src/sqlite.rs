@@ -93,8 +93,9 @@ impl EventStore {
         &self,
         limit: usize,
         offset: usize,
-        event_type: Option<EventType>,
+        event_types: &[String],
         watch_root: Option<&str>,
+        search: Option<&str>,
     ) -> Result<Vec<FsEvent>, StorageError> {
         let conn = self.conn.lock().await;
         let mut sql = String::from(
@@ -103,13 +104,24 @@ impl EventStore {
         );
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
-        if let Some(et) = event_type {
-            sql.push_str(" AND event_type = ?");
-            param_values.push(Box::new(et.to_string()));
+        if !event_types.is_empty() {
+            let placeholders: Vec<&str> = event_types.iter().map(|_| "?").collect();
+            sql.push_str(&format!(" AND event_type IN ({})", placeholders.join(",")));
+            for et in event_types {
+                param_values.push(Box::new(et.clone()));
+            }
         }
         if let Some(root) = watch_root {
             sql.push_str(" AND watch_root = ?");
             param_values.push(Box::new(root.to_string()));
+        }
+        if let Some(s) = search {
+            if !s.is_empty() {
+                sql.push_str(" AND (path LIKE ? OR target_path LIKE ?)");
+                let pattern = format!("%{}%", s);
+                param_values.push(Box::new(pattern.clone()));
+                param_values.push(Box::new(pattern));
+            }
         }
 
         sql.push_str(" ORDER BY timestamp DESC LIMIT ? OFFSET ?");
@@ -174,6 +186,44 @@ impl EventStore {
     pub async fn count(&self) -> Result<usize, StorageError> {
         let conn = self.conn.lock().await;
         let count: i64 = conn.query_row("SELECT COUNT(*) FROM events", [], |row| row.get(0))?;
+        Ok(count as usize)
+    }
+
+    /// Get the count of events matching filters.
+    pub async fn count_filtered(
+        &self,
+        event_types: &[String],
+        watch_root: Option<&str>,
+        search: Option<&str>,
+    ) -> Result<usize, StorageError> {
+        let conn = self.conn.lock().await;
+        let mut sql = String::from("SELECT COUNT(*) FROM events WHERE 1=1");
+        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+        if !event_types.is_empty() {
+            let placeholders: Vec<&str> = event_types.iter().map(|_| "?").collect();
+            sql.push_str(&format!(" AND event_type IN ({})", placeholders.join(",")));
+            for et in event_types {
+                param_values.push(Box::new(et.clone()));
+            }
+        }
+        if let Some(root) = watch_root {
+            sql.push_str(" AND watch_root = ?");
+            param_values.push(Box::new(root.to_string()));
+        }
+        if let Some(s) = search {
+            if !s.is_empty() {
+                sql.push_str(" AND (path LIKE ? OR target_path LIKE ?)");
+                let pattern = format!("%{}%", s);
+                param_values.push(Box::new(pattern.clone()));
+                param_values.push(Box::new(pattern));
+            }
+        }
+
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|p| p.as_ref()).collect();
+
+        let count: i64 = conn.query_row(&sql, params_ref.as_slice(), |row| row.get(0))?;
         Ok(count as usize)
     }
 

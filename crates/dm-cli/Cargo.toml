@@ -15,6 +15,7 @@ dm-watcher = { workspace = true }
 dm-processor = { workspace = true }
 dm-storage = { workspace = true }
 dm-notify = { workspace = true }
+dm-web = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

@@ -15,6 +15,8 @@ pub struct AppConfig {
     pub database: DatabaseConfig,
     /// Logging settings.
     pub logging: LoggingConfig,
+    /// Web server settings.
+    pub server: ServerConfig,
 }
 
 impl Default for AppConfig {
@@ -25,6 +27,7 @@ impl Default for AppConfig {
             notifications: NotificationsConfig::default(),
             database: DatabaseConfig::default(),
             logging: LoggingConfig::default(),
+            server: ServerConfig::default(),
         }
     }
 }
@@ -245,6 +248,31 @@ impl Default for LoggingConfig {
             format: "%timestamp% [%event%] %path%".to_string(),
             rotation: "daily".to_string(),
             level: "info".to_string(),
+        }
+    }
+}
+
+/// Web server configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ServerConfig {
+    /// Whether the web server is enabled.
+    pub enabled: bool,
+    /// Bind address.
+    pub bind: String,
+    /// Bind port.
+    pub port: u16,
+    /// Password for web dashboard authentication. Empty = no auth required.
+    pub password: String,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            bind: "127.0.0.1".to_string(),
+            port: 8080,
+            password: String::new(),
         }
     }
 }

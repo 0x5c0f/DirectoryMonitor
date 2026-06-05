@@ -2,7 +2,9 @@
 # Directory Monitor 配置文件
 # =============================================================================
 # 复制此文件为 config.toml 并根据需要修改。
-# 用法: ./directory-monitor -c config.toml run
+# 用法:
+#   ./directory-monitor -c config.toml run    # 命令行模式
+#   ./directory-monitor -c config.toml serve  # Web 服务模式（浏览器访问）
 
 # -----------------------------------------------------------------------------
 # 全局设置
@@ -41,18 +43,24 @@ exclude = ["*.tmp", "~*", "*.swp"]
 # 事件类型过滤（只接收指定类型的事件，其余丢弃）
 # 留空或不配置 = 接收所有事件类型
 #
-# 可选值（对齐 inotifywait 风格）:
-#   "create"        - 文件/目录创建
-#   "modify"        - 文件内容写入
-#   "attrib"        - 元数据变更（权限、时间戳、所有者）
-#   "close_write"   - 写入后关闭（最可靠的"写完成"信号）
-#   "close_nowrite" - 只读后关闭
-#   "open"          - 文件打开
-#   "moved_to"      - 文件移入监控目录
-#   "moved_from"    - 文件移出监控目录
-#   "delete"        - 文件/目录删除
-#   "rename"        - 重命名（含源路径和目标路径）
-#   "access"        - 文件内容读取
+# 可选值（不区分大小写，支持多种格式）:
+#   "create" / "created"        - 文件/目录创建
+#   "modify" / "modified"       - 文件内容写入
+#   "attrib"                    - 元数据变更（权限、时间戳、所有者）
+#   "close_write"               - 写入后关闭（最可靠的"写完成"信号）
+#   "close_nowrite"             - 只读后关闭
+#   "open"                      - 文件打开
+#   "moved_to"                  - 文件移入监控目录
+#   "moved_from"                - 文件移出监控目录
+#   "delete" / "deleted"        - 文件/目录删除
+#   "rename" / "renamed"        - 重命名（含源路径和目标路径）
+#   "access"                    - 文件内容读取
+#
+# 示例（以下写法都是有效的）:
+#   event_types = ["CREATE", "MODIFY", "DELETE"]           # 大写原形
+#   event_types = ["create", "modify", "delete"]           # 小写原形
+#   event_types = ["created", "modified", "deleted"]       # 小写过去式
+#   event_types = ["Created", "Modified", "Deleted"]       # 混合大小写
 event_types = ["created", "modified", "deleted", "renamed"]
 
 # 此目标的独立日志文件路径（可选）
@@ -92,7 +100,7 @@ event_types = ["created", "modified", "deleted", "renamed"]
 # recursive = true
 # include = ["*.jpg", "*.png", "*.gif", "*.webp"]
 # exclude = ["thumb_*", ".DS_Store"]
-# event_types = ["create", "delete"]
+# event_types = ["CREATE", "DELETE"]  # 也支持大写格式
 # email_recipients = ["webmaster@example.com"]
 
 # -----------------------------------------------------------------------------
@@ -157,20 +165,8 @@ facility = "user"
 # 不设置 = 使用默认格式 "%event%: %path%"
 # message_format = "%event%: %path% by %user%"
 
-# -----------------------------------------------------------------------------
-# 声音告警设置
-# -----------------------------------------------------------------------------
-[notifications.sound]
-# 是否启用声音告警
-enabled = false
-
-# WAV 音频文件路径（仅支持 .wav 格式）
-# file = "/usr/share/sounds/alert.wav"
-
-# 是否循环播放直到用户查看界面
-# true: 持续播放直到用户打开 GUI 窗口
-# false: 只播放一次
-loop_until_viewed = false
+# 注意：声音告警功能已在 Web UI 中移除
+# 如果你的配置文件中有 [notifications.sound] 部分，可以安全删除
 
 # -----------------------------------------------------------------------------
 # 数据库设置
@@ -210,3 +206,22 @@ rotation = "daily"
 #   "warn"  - 仅警告和错误
 #   "error" - 仅错误
 level = "info"
+
+# -----------------------------------------------------------------------------
+# Web 服务器设置（serve 子命令）
+# -----------------------------------------------------------------------------
+[server]
+# 是否启用 Web 服务器
+# 启动方式: ./directory-monitor serve
+enabled = true
+
+# 绑定地址（默认仅本机访问）
+# 如需局域网访问，改为 "0.0.0.0"
+bind = "127.0.0.1"
+
+# 绑定端口
+port = 8080
+
+# Web 访问密码（留空 = 不需要密码）
+# 设置后，浏览器需要输入此密码才能查看事件和配置
+password = ""

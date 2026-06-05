@@ -13,7 +13,7 @@ English | [中文](README.zh_CN.md)
 - **Event deduplication** — Deduplicates by (path, event_type) to preserve distinct event types
 - **Batch processing** — Configurable batch size and timeout for downstream consumers
 - **SQLite storage** — WAL mode for high-throughput event persistence
-- **Notifications** — Email (SMTP), Syslog (RFC3164/5424), script execution, sound alerts
+- **Notifications** — Email (SMTP), Syslog (RFC3164/5424), script execution
 - **Macro system** — Context macros (`%file%`, `%path%`, `%event%`, etc.) for logs and scripts
 - **Directory snapshots** — Detect changes during network outages or power failures
 - **CLI interface** — Full command-line tool with run, validate, and snapshot commands
@@ -43,8 +43,11 @@ cp config.example.toml config.toml
 # Validate configuration
 ./target/release/directory-monitor -c config.toml validate
 
-# Start monitoring
+# Start monitoring (CLI mode)
 ./target/release/directory-monitor -c config.toml run
+
+# Or start with web dashboard (browser access)
+./target/release/directory-monitor -c config.toml serve
 ```
 
 ## Configuration
@@ -57,9 +60,11 @@ The project uses a modular architecture with async event processing:
 
 ```
 Filesystem → notify → FsWatcher → [debounce] → WatchEvent
-    → EventProcessor (filter → dedup → batch)
+    → broadcast channel → multiple consumers:
+        → EventProcessor (filter → dedup → batch)
         → EventStore (SQLite)
         → Notifiers (email, syslog, scripts)
+        → Web Server (WebSocket real-time push)
 ```
 
 Events flow through `tokio::sync::mpsc` channels, allowing multiple consumers to process events concurrently.

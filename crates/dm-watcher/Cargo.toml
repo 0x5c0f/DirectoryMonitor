@@ -11,3 +11,4 @@ notify = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
+serde = { workspace = true }

@@ -6,6 +6,7 @@ members = [
     "crates/dm-processor",
     "crates/dm-storage",
     "crates/dm-notify",
+    "crates/dm-web",
     "crates/dm-cli",
 ]
 
@@ -22,6 +23,10 @@ dm-watcher = { path = "crates/dm-watcher" }
 dm-processor = { path = "crates/dm-processor" }
 dm-storage = { path = "crates/dm-storage" }
 dm-notify = { path = "crates/dm-notify" }
+dm-web = { path = "crates/dm-web" }
+
+# Web framework
+axum = { version = "0.8", features = ["ws"] }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

@@ -13,7 +13,7 @@
 - **事件去重** — 按（路径, 事件类型）去重，保留不同类型的事件
 - **批量处理** — 可配置批量大小和超时时间
 - **SQLite 存储** — WAL 模式，高吞吐事件持久化
-- **通知系统** — 邮件（SMTP）、Syslog（RFC3164/5424）、脚本执行、声音告警
+- **通知系统** — 邮件（SMTP）、Syslog（RFC3164/5424）、脚本执行
 - **宏系统** — 日志格式和脚本参数支持上下文宏（`%file%`、`%path%`、`%event%` 等）
 - **目录快照** — 断网/断电后检测变更
 - **CLI 命令行** — 完整命令行工具，支持 run、validate、snapshot 子命令
@@ -74,19 +74,24 @@ event_types = ["created", "modified", "deleted", "renamed"]
 
 ### 事件类型
 
-| 事件 | 说明 |
-|------|------|
-| `CREATE` | 文件/目录创建 |
-| `MODIFY` | 文件内容写入 |
-| `ATTRIB` | 元数据变更（权限、时间戳） |
-| `CLOSE_WRITE` | 写入后关闭（最可靠的写完成信号） |
-| `CLOSE_NOWRITE` | 只读后关闭 |
-| `OPEN` | 文件打开 |
-| `MOVED_TO` | 文件移入监控目录 |
-| `MOVED_FROM` | 文件移出监控目录 |
-| `DELETE` | 文件/目录删除 |
-| `RENAME` | 重命名 |
-| `ACCESS` | 文件内容读取 |
+配置文件中的事件类型名称**不区分大小写**，支持多种格式：
+- 大写原形：`CREATE`, `MODIFY`, `DELETE`
+- 小写原形：`create`, `modify`, `delete`
+- 小写过去式：`created`, `modified`, `deleted`
+
+| 事件 | 别名 | 说明 |
+|------|------|------|
+| `CREATE` | `created` | 文件/目录创建 |
+| `MODIFY` | `modified` | 文件内容写入 |
+| `ATTRIB` | | 元数据变更（权限、时间戳） |
+| `CLOSE_WRITE` | | 写入后关闭（最可靠的写完成信号） |
+| `CLOSE_NOWRITE` | | 只读后关闭 |
+| `OPEN` | | 文件打开 |
+| `MOVED_TO` | | 文件移入监控目录 |
+| `MOVED_FROM` | | 文件移出监控目录 |
+| `DELETE` | `deleted` | 文件/目录删除 |
+| `RENAME` | `renamed` | 重命名 |
+| `ACCESS` | | 文件内容读取 |
 
 ### 日志格式占位符
 
@@ -115,20 +120,46 @@ make install      # 安装到 ~/.local/bin
 make uninstall    # 卸载
 make run          # 使用示例配置运行
 make validate     # 验证配置文件
+make serve        # 启动 Web 服务模式（浏览器访问）
 make watch        # 监听文件变更自动重新构建
 make help         # 查看所有命令
 ```
+
+## 运行模式
+
+### 命令行模式（默认）
+
+```bash
+./directory-monitor run
+```
+
+直接在终端输出事件日志。
+
+### Web 服务模式
+
+```bash
+./directory-monitor serve              # 默认 http://127.0.0.1:8080
+./directory-monitor serve -b 0.0.0.0:9090  # 自定义地址（局域网访问）
+```
+
+启动后在浏览器打开地址，即可查看实时事件日志。支持：
+- 实时事件流（WebSocket）
+- 历史事件查询
+- 事件类型过滤
+- 路径搜索
 
 ## 架构设计
 
 ```
 文件系统 → notify → FsWatcher → [防抖 200ms] → WatchEvent
-    → EventProcessor (过滤 → 去重 → 批量)
+    → broadcast 通道 → 多消费者:
+        → EventProcessor (过滤 → 去重 → 批量)
         → EventStore (SQLite)
         → 通知器 (邮件、Syslog、脚本)
+        → Web Server (WebSocket 实时推送)
 ```
 
-事件通过 `tokio::sync::mpsc` 通道流转，支持多个消费者并发处理。
+事件通过 `tokio::sync::broadcast` 通道分发，支持多个消费者并发处理。
 
 ## 依赖
 
@@ -138,6 +169,7 @@ make help         # 查看所有命令
 | `rusqlite` | SQLite 事件存储 |
 | `lettre` | SMTP 邮件通知 |
 | `tokio` | 异步运行时 |
+| `axum` | Web 服务器框架 |
 | `tracing` | 结构化日志 |
 | `clap` | CLI 参数解析 |
 | `globset` | Glob 模式匹配 |
