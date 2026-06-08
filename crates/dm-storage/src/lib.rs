@@ -1,9 +1,10 @@
 pub mod query;
 pub mod schema;
 pub mod sqlite;
+pub mod worker;
 
 pub use query::EventQuery;
-pub use sqlite::EventStore;
+pub use worker::EventStore;
 
 /// Storage-specific error type.
 #[derive(Debug, thiserror::Error)]
