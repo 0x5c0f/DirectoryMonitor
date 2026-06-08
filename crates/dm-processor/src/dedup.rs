@@ -124,7 +124,7 @@ mod tests {
         let mut dedup = EventDeduplicator::new(Duration::from_secs(5));
         let events = vec![
             make_event(EventType::Created, "/a.txt"),
-            make_event(EventType::Created, "/a.txt"), // dup
+            make_event(EventType::Created, "/a.txt"),  // dup
             make_event(EventType::Modified, "/a.txt"), // different type
             make_event(EventType::Created, "/b.txt"),
             make_event(EventType::Created, "/b.txt"), // dup

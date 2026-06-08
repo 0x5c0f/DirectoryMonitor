@@ -12,6 +12,15 @@ use tracing::{error, info, warn};
 
 use dm_web::server::EventPayload;
 
+/// Type alias for the monitoring setup tuple.
+type MonitorComponents = (
+    FsWatcher,
+    broadcast::Sender<WatchEvent>,
+    Vec<(PathBuf, EventFilter)>,
+    Arc<Mutex<EventDeduplicator>>,
+    Option<EventStore>,
+);
+
 #[derive(Parser)]
 #[command(
     name = "directory-monitor",
@@ -118,10 +127,16 @@ fn validate_config(config: &AppConfig) -> Result<()> {
     }
 
     if config.notifications.email.enabled {
-        info!("  Email notifications: enabled (SMTP: {})", config.notifications.email.smtp_server);
+        info!(
+            "  Email notifications: enabled (SMTP: {})",
+            config.notifications.email.smtp_server
+        );
     }
     if config.notifications.syslog.enabled {
-        info!("  Syslog: enabled ({}:{})", config.notifications.syslog.server, config.notifications.syslog.port);
+        info!(
+            "  Syslog: enabled ({}:{})",
+            config.notifications.syslog.server, config.notifications.syslog.port
+        );
     }
     if config.database.enabled {
         info!("  Database: {}", config.database.path.display());
@@ -132,15 +147,7 @@ fn validate_config(config: &AppConfig) -> Result<()> {
 }
 
 /// Create shared monitoring components: (watcher, event_sender, filters, dedup, store, notifiers).
-fn setup_monitoring(
-    config: &AppConfig,
-) -> Result<(
-    FsWatcher,
-    broadcast::Sender<WatchEvent>,
-    Vec<(PathBuf, EventFilter)>,
-    Arc<Mutex<EventDeduplicator>>,
-    Option<EventStore>,
-)> {
+fn setup_monitoring(config: &AppConfig) -> Result<MonitorComponents> {
     // Create broadcast event channel
     let (event_tx, _) = broadcast::channel::<WatchEvent>(4096);
 
@@ -155,7 +162,10 @@ fn setup_monitoring(
                 .add_watch(watch_config)
                 .map_err(|e| anyhow::anyhow!("Failed to add watch: {e}"))?;
         } else {
-            warn!("Skipping non-existent path: {}", watch_config.path.display());
+            warn!(
+                "Skipping non-existent path: {}",
+                watch_config.path.display()
+            );
         }
     }
 
@@ -163,13 +173,11 @@ fn setup_monitoring(
     let filters: Vec<(PathBuf, EventFilter)> = config
         .watches
         .iter()
-        .filter_map(|w| {
-            match EventFilter::from_config(w) {
-                Ok(f) => Some((w.path.clone(), f)),
-                Err(e) => {
-                    error!("Failed to create filter for {}: {e}", w.path.display());
-                    None
-                }
+        .filter_map(|w| match EventFilter::from_config(w) {
+            Ok(f) => Some((w.path.clone(), f)),
+            Err(e) => {
+                error!("Failed to create filter for {}: {e}", w.path.display());
+                None
             }
         })
         .collect();
@@ -240,7 +248,11 @@ async fn run_monitor(config: AppConfig) -> Result<()> {
     Ok(())
 }
 
-async fn run_serve(mut config: AppConfig, config_path: PathBuf, bind: &Option<String>) -> Result<()> {
+async fn run_serve(
+    mut config: AppConfig,
+    config_path: PathBuf,
+    bind: &Option<String>,
+) -> Result<()> {
     info!("Starting Directory Monitor with web dashboard...");
 
     // CLI --bind overrides config file [server] settings
@@ -267,13 +279,23 @@ async fn run_serve(mut config: AppConfig, config_path: PathBuf, bind: &Option<St
         if watch_config.path.exists() {
             match watcher_manager.add_watcher(watch_config.clone()).await {
                 Ok(id) => {
-                    info!("Added initial watcher[{}] for {}", id, watch_config.path.display());
+                    info!(
+                        "Added initial watcher[{}] for {}",
+                        id,
+                        watch_config.path.display()
+                    );
                     metrics.active_watchers.inc();
                 }
-                Err(e) => warn!("Failed to add watcher for {}: {e}", watch_config.path.display()),
+                Err(e) => warn!(
+                    "Failed to add watcher for {}: {e}",
+                    watch_config.path.display()
+                ),
             }
         } else {
-            warn!("Skipping non-existent path: {}", watch_config.path.display());
+            warn!(
+                "Skipping non-existent path: {}",
+                watch_config.path.display()
+            );
         }
     }
 
@@ -281,13 +303,11 @@ async fn run_serve(mut config: AppConfig, config_path: PathBuf, bind: &Option<St
     let filters: Vec<(PathBuf, EventFilter)> = config
         .watches
         .iter()
-        .filter_map(|w| {
-            match EventFilter::from_config(w) {
-                Ok(f) => Some((w.path.clone(), f)),
-                Err(e) => {
-                    error!("Failed to create filter for {}: {e}", w.path.display());
-                    None
-                }
+        .filter_map(|w| match EventFilter::from_config(w) {
+            Ok(f) => Some((w.path.clone(), f)),
+            Err(e) => {
+                error!("Failed to create filter for {}: {e}", w.path.display());
+                None
             }
         })
         .collect();
@@ -425,20 +445,22 @@ async fn run_serve(mut config: AppConfig, config_path: PathBuf, bind: &Option<St
                             let new_filters: Vec<(PathBuf, EventFilter)> = new_config
                                 .watches
                                 .iter()
-                                .filter_map(|w| {
-                                    match EventFilter::from_config(w) {
-                                        Ok(f) => Some((w.path.clone(), f)),
-                                        Err(e) => {
-                                            error!("Failed to create filter for {}: {e}", w.path.display());
-                                            None
-                                        }
+                                .filter_map(|w| match EventFilter::from_config(w) {
+                                    Ok(f) => Some((w.path.clone(), f)),
+                                    Err(e) => {
+                                        error!(
+                                            "Failed to create filter for {}: {e}",
+                                            w.path.display()
+                                        );
+                                        None
                                     }
                                 })
                                 .collect();
                             *filters_clone.write().await = new_filters;
 
                             // Update watcher count
-                            let net_change = result.added.len() as i64 - result.removed.len() as i64;
+                            let net_change =
+                                result.added.len() as i64 - result.removed.len() as i64;
                             if net_change != 0 {
                                 metrics_clone.active_watchers.add(net_change);
                             }
@@ -490,6 +512,7 @@ async fn run_serve(mut config: AppConfig, config_path: PathBuf, bind: &Option<St
 }
 
 /// Process a single watch event (shared between run and serve modes).
+#[allow(clippy::too_many_arguments)]
 async fn process_watch_event(
     watch_event: WatchEvent,
     filters: &[(PathBuf, EventFilter)],
@@ -607,7 +630,8 @@ fn take_snapshot(path: &Path, output: &Path) -> Result<()> {
 
     let json = serde_json::to_string_pretty(&snapshot.files.len())
         .context("Failed to serialize snapshot")?;
-    std::fs::write(output, json).with_context(|| format!("Failed to write {}", output.display()))?;
+    std::fs::write(output, json)
+        .with_context(|| format!("Failed to write {}", output.display()))?;
 
     info!(
         "Snapshot saved: {} entries -> {}",

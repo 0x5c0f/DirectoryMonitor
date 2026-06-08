@@ -40,7 +40,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/config", get(config_get_handler))
         .route("/api/config/watches", post(config_add_watch_handler))
         .route("/api/config/watches/{idx}", put(config_put_watch_handler))
-        .route("/api/config/watches/{idx}", delete(config_delete_watch_handler))
+        .route(
+            "/api/config/watches/{idx}",
+            delete(config_delete_watch_handler),
+        )
         .route("/api/config/global", put(config_put_global_handler))
         .route("/api/watchers", get(watchers_list_handler))
         .route("/api/watchers/reload", post(watchers_reload_handler))
@@ -208,9 +211,7 @@ async fn auth_verify_handler(
 // ── Metrics ───────────────────────────────────────────────────────────────────
 
 /// GET /metrics — Prometheus text format (no auth required for scraping).
-async fn metrics_prometheus_handler(
-    State(state): State<AppState>,
-) -> String {
+async fn metrics_prometheus_handler(State(state): State<AppState>) -> String {
     state.metrics.prometheus()
 }
 
@@ -221,7 +222,9 @@ async fn metrics_chart_handler(
 ) -> Result<axum::response::Json<serde_json::Value>, StatusCode> {
     check_auth(&headers, &state).await?;
     let chart = state.metrics.chart_json();
-    Ok(axum::response::Json(serde_json::to_value(chart).unwrap_or_default()))
+    Ok(axum::response::Json(
+        serde_json::to_value(chart).unwrap_or_default(),
+    ))
 }
 
 // ── Pages ─────────────────────────────────────────────────────────────────────
@@ -307,25 +310,64 @@ async fn events_handler(
 ) -> Result<axum::response::Json<serde_json::Value>, StatusCode> {
     check_auth(&headers, &state).await?;
 
-    let page: usize = params.get("page").and_then(|v| v.parse().ok()).unwrap_or(1).max(1);
-    let per_page: usize = params.get("per_page").and_then(|v| v.parse().ok()).unwrap_or(50).clamp(1, 200);
-    let search = params.get("search").map(|s| s.as_str()).filter(|s| !s.is_empty());
+    let page: usize = params
+        .get("page")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1)
+        .max(1);
+    let per_page: usize = params
+        .get("per_page")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(50)
+        .clamp(1, 200);
+    let search = params
+        .get("search")
+        .map(|s| s.as_str())
+        .filter(|s| !s.is_empty());
     let event_types: Vec<String> = params
         .get("types")
-        .map(|t| t.split(',').map(|s| s.trim().to_uppercase()).filter(|s| !s.is_empty()).collect())
+        .map(|t| {
+            t.split(',')
+                .map(|s| s.trim().to_uppercase())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
         .unwrap_or_default();
-    let after = params.get("after").map(|s| s.as_str()).filter(|s| !s.is_empty());
-    let before = params.get("before").map(|s| s.as_str()).filter(|s| !s.is_empty());
-    let is_dir = params.get("target_type").and_then(|v| match v.to_lowercase().as_str() {
-        "dir" | "directory" => Some(true),
-        "file" => Some(false),
-        _ => None,
-    });
+    let after = params
+        .get("after")
+        .map(|s| s.as_str())
+        .filter(|s| !s.is_empty());
+    let before = params
+        .get("before")
+        .map(|s| s.as_str())
+        .filter(|s| !s.is_empty());
+    let is_dir = params
+        .get("target_type")
+        .and_then(|v| match v.to_lowercase().as_str() {
+            "dir" | "directory" => Some(true),
+            "file" => Some(false),
+            _ => None,
+        });
     let offset = (page - 1) * per_page;
 
     let (events, total) = if let Some(ref store) = state.store {
-        let total = store.count_filtered(&event_types, None, search, after, before, is_dir).await.unwrap_or(0);
-        let evts = store.query(per_page, offset, &event_types, None, search, after, before, is_dir).await.unwrap_or_default();
+        let total = store
+            .count_filtered(&event_types, None, search, after, before, is_dir)
+            .await
+            .unwrap_or(0);
+        let evts = store
+            .query(
+                per_page,
+                offset,
+                &event_types,
+                None,
+                search,
+                after,
+                before,
+                is_dir,
+            )
+            .await
+            .unwrap_or_default();
         let events: Vec<serde_json::Value> = evts
             .iter()
             .map(|e| {
@@ -338,7 +380,11 @@ async fn events_handler(
         (vec![], 0)
     };
 
-    let total_pages = if total == 0 { 1 } else { (total + per_page - 1) / per_page };
+    let total_pages = if total == 0 {
+        1
+    } else {
+        total.div_ceil(per_page)
+    };
 
     Ok(axum::response::Json(serde_json::json!({
         "events": events,
@@ -446,13 +492,22 @@ async fn config_put_watch_handler(
         config.watches[idx].recursive = v;
     }
     if let Some(v) = body.get("include").and_then(|v| v.as_array()) {
-        config.watches[idx].include = v.iter().filter_map(|s| s.as_str().map(String::from)).collect();
+        config.watches[idx].include = v
+            .iter()
+            .filter_map(|s| s.as_str().map(String::from))
+            .collect();
     }
     if let Some(v) = body.get("exclude").and_then(|v| v.as_array()) {
-        config.watches[idx].exclude = v.iter().filter_map(|s| s.as_str().map(String::from)).collect();
+        config.watches[idx].exclude = v
+            .iter()
+            .filter_map(|s| s.as_str().map(String::from))
+            .collect();
     }
     if let Some(v) = body.get("event_types").and_then(|v| v.as_array()) {
-        config.watches[idx].event_types = v.iter().filter_map(|s| s.as_str().map(String::from)).collect();
+        config.watches[idx].event_types = v
+            .iter()
+            .filter_map(|s| s.as_str().map(String::from))
+            .collect();
     }
 
     let watch_path = config.watches[idx].path.display().to_string();
@@ -489,7 +544,8 @@ async fn config_add_watch_handler(
 ) -> Result<axum::response::Json<serde_json::Value>, StatusCode> {
     check_auth(&headers, &state).await?;
 
-    let path = body.get("path")
+    let path = body
+        .get("path")
         .and_then(|v| v.as_str())
         .ok_or(StatusCode::BAD_REQUEST)?;
 
@@ -500,24 +556,46 @@ async fn config_add_watch_handler(
     let mut config = state.config.write().await;
 
     // Check if path already exists
-    if config.watches.iter().any(|w| w.path.display().to_string() == path) {
+    if config
+        .watches
+        .iter()
+        .any(|w| w.path.display().to_string() == path)
+    {
         return Err(StatusCode::CONFLICT);
     }
 
     let new_watch = dm_core::config::WatchConfig {
         path: PathBuf::from(path),
-        recursive: body.get("recursive").and_then(|v| v.as_bool()).unwrap_or(true),
-        include: body.get("include")
+        recursive: body
+            .get("recursive")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true),
+        include: body
+            .get("include")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|s| s.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|s| s.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default(),
-        exclude: body.get("exclude")
+        exclude: body
+            .get("exclude")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|s| s.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|s| s.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default(),
-        event_types: body.get("event_types")
+        event_types: body
+            .get("event_types")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|s| s.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|s| s.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default(),
         log_file: None,
         log_format: None,
@@ -577,7 +655,10 @@ async fn config_delete_watch_handler(
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
-    info!("Config updated: removed watch[{}] {}", idx, removed_path_str);
+    info!(
+        "Config updated: removed watch[{}] {}",
+        idx, removed_path_str
+    );
 
     Ok(axum::response::Json(serde_json::json!({
         "ok": true,
@@ -705,13 +786,11 @@ async fn watchers_reload_handler(
             let new_filters: Vec<(PathBuf, EventFilter)> = new_config
                 .watches
                 .iter()
-                .filter_map(|w| {
-                    match EventFilter::from_config(w) {
-                        Ok(f) => Some((w.path.clone(), f)),
-                        Err(e) => {
-                            error!("Failed to create filter for {}: {e}", w.path.display());
-                            None
-                        }
+                .filter_map(|w| match EventFilter::from_config(w) {
+                    Ok(f) => Some((w.path.clone(), f)),
+                    Err(e) => {
+                        error!("Failed to create filter for {}: {e}", w.path.display());
+                        None
                     }
                 })
                 .collect();
@@ -757,7 +836,10 @@ mod tests {
     #[test]
     fn test_extract_token_valid() {
         let mut headers = HeaderMap::new();
-        headers.insert("authorization", HeaderValue::from_static("Bearer my-secret-token-123"));
+        headers.insert(
+            "authorization",
+            HeaderValue::from_static("Bearer my-secret-token-123"),
+        );
 
         let token = extract_token(&headers);
         assert_eq!(token, Some("my-secret-token-123".to_string()));
@@ -773,7 +855,10 @@ mod tests {
     #[test]
     fn test_extract_token_invalid_format() {
         let mut headers = HeaderMap::new();
-        headers.insert("authorization", HeaderValue::from_static("Basic dXNlcjpwYXNz"));
+        headers.insert(
+            "authorization",
+            HeaderValue::from_static("Basic dXNlcjpwYXNz"),
+        );
 
         let token = extract_token(&headers);
         assert_eq!(token, None);
@@ -792,7 +877,10 @@ mod tests {
     fn test_extract_token_invalid_header_value() {
         let mut headers = HeaderMap::new();
         // Non-ASCII bytes are invalid header values
-        headers.insert("authorization", HeaderValue::from_bytes(&[0xFF, 0xFE]).unwrap());
+        headers.insert(
+            "authorization",
+            HeaderValue::from_bytes(&[0xFF, 0xFE]).unwrap(),
+        );
 
         let token = extract_token(&headers);
         assert_eq!(token, None);

@@ -25,7 +25,11 @@ impl EventFilter {
                     .map_err(|e| format!("Invalid include pattern '{}': {e}", pattern))?;
                 builder.add(glob);
             }
-            Some(builder.build().map_err(|e| format!("Failed to build include set: {e}"))?)
+            Some(
+                builder
+                    .build()
+                    .map_err(|e| format!("Failed to build include set: {e}"))?,
+            )
         };
 
         let exclude = if config.exclude.is_empty() {
@@ -37,7 +41,11 @@ impl EventFilter {
                     .map_err(|e| format!("Invalid exclude pattern '{}': {e}", pattern))?;
                 builder.add(glob);
             }
-            Some(builder.build().map_err(|e| format!("Failed to build exclude set: {e}"))?)
+            Some(
+                builder
+                    .build()
+                    .map_err(|e| format!("Failed to build exclude set: {e}"))?,
+            )
         };
 
         let event_types: Vec<EventType> = config
@@ -225,7 +233,10 @@ mod tests {
         let config = make_config(vec![], vec![], vec!["**/node_modules/**".to_string()]);
         let filter = EventFilter::from_config(&config).unwrap();
 
-        assert!(!filter.matches(&make_event(EventType::Created, "/project/node_modules/pkg/index.js")));
+        assert!(!filter.matches(&make_event(
+            EventType::Created,
+            "/project/node_modules/pkg/index.js"
+        )));
         assert!(filter.matches(&make_event(EventType::Created, "/project/src/index.js")));
     }
 

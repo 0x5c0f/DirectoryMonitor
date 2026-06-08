@@ -32,13 +32,12 @@ impl PrometheusFormatter {
                         .map(|(k, v)| format!("{}=\"{}\"", k, escape_label_value(v)))
                         .collect::<Vec<_>>()
                         .join(",");
-                    output.push_str(&format!(
-                        "{{{}}} {}\n",
-                        label_str,
-                        value
-                    ));
+                    output.push_str(&format!("{{{}}} {}\n", label_str, value));
                     // Need to prepend the metric name
-                    output = output.replace(&format!("{{{}}}", label_str), &format!("{}{{{}}}", counter.name(), label_str));
+                    output = output.replace(
+                        &format!("{{{}}}", label_str),
+                        &format!("{}{{{}}}", counter.name(), label_str),
+                    );
                 }
             }
         }
@@ -48,7 +47,10 @@ impl PrometheusFormatter {
 
     /// Format a gauge metric.
     pub fn format_gauge(name: &str, help: &str, value: i64) -> String {
-        format!("# HELP {} {}\n# TYPE {} gauge\n{} {}\n", name, help, name, name, value)
+        format!(
+            "# HELP {} {}\n# TYPE {} gauge\n{} {}\n",
+            name, help, name, name, value
+        )
     }
 
     /// Format a gauge with labels.
@@ -75,11 +77,7 @@ impl PrometheusFormatter {
     }
 
     /// Format a window as a summary (showing recent values).
-    pub fn format_window_summary(
-        name: &str,
-        help: &str,
-        window: &LabeledWindow,
-    ) -> String {
+    pub fn format_window_summary(name: &str, help: &str, window: &LabeledWindow) -> String {
         let mut output = String::new();
 
         output.push_str(&format!("# HELP {} {}\n", name, help));
@@ -171,12 +169,7 @@ mod tests {
 
     #[test]
     fn test_format_gauge_with_empty_labels() {
-        let output = PrometheusFormatter::format_gauge_with_labels(
-            "dm_test",
-            "Test",
-            &[],
-            42,
-        );
+        let output = PrometheusFormatter::format_gauge_with_labels("dm_test", "Test", &[], 42);
         assert!(output.contains("dm_test 42"));
         assert!(!output.contains("{}"));
     }
@@ -189,11 +182,8 @@ mod tests {
         window.record("create", 5);
         window.record("delete", 3);
 
-        let output = PrometheusFormatter::format_window_summary(
-            "dm_event_rate",
-            "Event rate",
-            &window,
-        );
+        let output =
+            PrometheusFormatter::format_window_summary("dm_event_rate", "Event rate", &window);
         assert!(output.contains("# HELP dm_event_rate Event rate"));
         assert!(output.contains("# TYPE dm_event_rate gauge"));
         assert!(output.contains("dm_event_rate{series=\"create\"} 5"));

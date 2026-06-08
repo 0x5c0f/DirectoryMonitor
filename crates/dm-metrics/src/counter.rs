@@ -2,6 +2,9 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 
+/// Label key-value pairs used to identify a counter.
+type Labels = Vec<(String, String)>;
+
 /// A thread-safe counter that can be incremented atomically.
 #[derive(Debug)]
 pub struct AtomicCounter {
@@ -72,7 +75,7 @@ pub struct LabeledCounter {
     /// Metric name (e.g., "dm_events_total")
     name: String,
     /// Counters keyed by label combination
-    counters: parking_lot::RwLock<HashMap<Vec<(String, String)>, Arc<AtomicCounter>>>,
+    counters: parking_lot::RwLock<HashMap<Labels, Arc<AtomicCounter>>>,
 }
 
 impl LabeledCounter {
@@ -86,7 +89,7 @@ impl LabeledCounter {
 
     /// Get or create a counter for the given labels.
     pub fn with_labels(&self, labels: &[(&str, &str)]) -> Arc<AtomicCounter> {
-        let key: Vec<(String, String)> = labels
+        let key: Labels = labels
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
@@ -126,7 +129,7 @@ impl LabeledCounter {
     }
 
     /// Get all label combinations and their current values.
-    pub fn snapshot(&self) -> Vec<(Vec<(String, String)>, i64)> {
+    pub fn snapshot(&self) -> Vec<(Labels, i64)> {
         let counters = self.counters.read();
         counters
             .iter()

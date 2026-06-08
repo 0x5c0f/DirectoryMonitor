@@ -7,7 +7,11 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-fn make_config(event_types: Vec<String>, include: Vec<String>, exclude: Vec<String>) -> WatchConfig {
+fn make_config(
+    event_types: Vec<String>,
+    include: Vec<String>,
+    exclude: Vec<String>,
+) -> WatchConfig {
     WatchConfig {
         path: PathBuf::from("/test"),
         recursive: true,
@@ -38,11 +42,11 @@ fn test_full_pipeline_filter_dedup_batch() {
 
     // Mix of events: some should be filtered, some deduped
     let events = vec![
-        make_event(EventType::Created, "/a.txt"),     // passes filter, new
-        make_event(EventType::Modified, "/b.txt"),    // filtered out (not CREATE)
-        make_event(EventType::Created, "/a.txt"),     // passes filter, duplicate
-        make_event(EventType::Created, "/c.txt"),     // passes filter, new
-        make_event(EventType::Created, "/d.txt"),     // passes filter, new → triggers batch flush
+        make_event(EventType::Created, "/a.txt"), // passes filter, new
+        make_event(EventType::Modified, "/b.txt"), // filtered out (not CREATE)
+        make_event(EventType::Created, "/a.txt"), // passes filter, duplicate
+        make_event(EventType::Created, "/c.txt"), // passes filter, new
+        make_event(EventType::Created, "/d.txt"), // passes filter, new → triggers batch flush
     ];
 
     // Step 1: Filter
@@ -75,7 +79,7 @@ fn test_filter_dedup_interaction() {
     let events = vec![
         make_event(EventType::Created, "/file.txt"),
         make_event(EventType::Modified, "/file.txt"), // filtered by type
-        make_event(EventType::Created, "/file.txt"),   // duplicate
+        make_event(EventType::Created, "/file.txt"),  // duplicate
     ];
 
     let filtered = filter.filter_events(events);
@@ -89,11 +93,7 @@ fn test_filter_dedup_interaction() {
 
 #[test]
 fn test_pipeline_with_exclude() {
-    let config = make_config(
-        vec![],
-        vec![],
-        vec!["**/.git/**".to_string()],
-    );
+    let config = make_config(vec![], vec![], vec!["**/.git/**".to_string()]);
     let filter = EventFilter::from_config(&config).unwrap();
     let mut dedup = EventDeduplicator::new(Duration::from_secs(5));
 

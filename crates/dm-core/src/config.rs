@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Root configuration for Directory Monitor.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
     /// General settings.
@@ -19,32 +19,21 @@ pub struct AppConfig {
     pub server: ServerConfig,
 }
 
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            general: GeneralConfig::default(),
-            watches: Vec::new(),
-            notifications: NotificationsConfig::default(),
-            database: DatabaseConfig::default(),
-            logging: LoggingConfig::default(),
-            server: ServerConfig::default(),
-        }
-    }
-}
-
 impl AppConfig {
     /// Load configuration from a TOML file.
     pub fn load(path: &Path) -> Result<Self, crate::error::ConfigError> {
-        let content = std::fs::read_to_string(path).map_err(|e| crate::error::ConfigError::ReadFailed {
-            path: path.display().to_string(),
-            source: e,
-        })?;
+        let content =
+            std::fs::read_to_string(path).map_err(|e| crate::error::ConfigError::ReadFailed {
+                path: path.display().to_string(),
+                source: e,
+            })?;
         toml::from_str(&content).map_err(crate::error::ConfigError::ParseFailed)
     }
 
     /// Save configuration to a TOML file.
     pub fn save(&self, path: &Path) -> Result<(), crate::error::ConfigError> {
-        let content = toml::to_string_pretty(self).map_err(crate::error::ConfigError::SerializeFailed)?;
+        let content =
+            toml::to_string_pretty(self).map_err(crate::error::ConfigError::SerializeFailed)?;
         std::fs::write(path, content).map_err(|e| crate::error::ConfigError::WriteFailed {
             path: path.display().to_string(),
             source: e,
@@ -109,7 +98,7 @@ fn default_script_mode() -> String {
     "async".to_string()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct NotificationsConfig {
     /// Email notification settings.
@@ -118,16 +107,6 @@ pub struct NotificationsConfig {
     pub syslog: SyslogConfig,
     /// Sound alert settings.
     pub sound: SoundConfig,
-}
-
-impl Default for NotificationsConfig {
-    fn default() -> Self {
-        Self {
-            email: EmailConfig::default(),
-            syslog: SyslogConfig::default(),
-            sound: SoundConfig::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -190,7 +169,7 @@ impl Default for SyslogConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SoundConfig {
     pub enabled: bool,
@@ -199,16 +178,6 @@ pub struct SoundConfig {
     /// Whether to loop until acknowledged.
     #[serde(default)]
     pub loop_until_viewed: bool,
-}
-
-impl Default for SoundConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            file: None,
-            loop_until_viewed: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

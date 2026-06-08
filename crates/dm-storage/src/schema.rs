@@ -54,7 +54,10 @@ pub fn initialize(conn: &Connection) -> Result<(), String> {
 
 /// Run database migrations from the given version to the current version.
 fn migrate(conn: &Connection, from_version: i32) -> Result<(), String> {
-    info!("Migrating database schema from version {} to {}", from_version, SCHEMA_VERSION);
+    info!(
+        "Migrating database schema from version {} to {}",
+        from_version, SCHEMA_VERSION
+    );
 
     if from_version < 2 {
         // v1 → v2: add is_dir column
@@ -64,11 +67,8 @@ fn migrate(conn: &Connection, from_version: i32) -> Result<(), String> {
     }
 
     // Update schema version
-    conn.execute(
-        "UPDATE schema_version SET version = ?1",
-        [SCHEMA_VERSION],
-    )
-    .map_err(|e| format!("Failed to update schema version: {e}"))?;
+    conn.execute("UPDATE schema_version SET version = ?1", [SCHEMA_VERSION])
+        .map_err(|e| format!("Failed to update schema version: {e}"))?;
 
     info!("Database schema migrated to version {}", SCHEMA_VERSION);
     Ok(())

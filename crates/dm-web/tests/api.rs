@@ -36,7 +36,9 @@ fn test_context() -> TestContext {
 fn test_context_with_config(config: AppConfig) -> TestContext {
     let config_dir = TempDir::new().expect("failed to create temp dir");
     let config_path = config_dir.path().join("config.toml");
-    config.save(&config_path).expect("failed to write initial config");
+    config
+        .save(&config_path)
+        .expect("failed to write initial config");
 
     let store = EventStore::open_memory().expect("failed to open memory store");
     let (event_tx, _) = broadcast::channel(4096);
@@ -126,7 +128,11 @@ async fn into_status_and_json(resp: axum::response::Response) -> (StatusCode, se
 }
 
 async fn login(router: &mut Router, password: &str) -> String {
-    let req = json_post("/api/auth/login", serde_json::json!({"password": password}), None);
+    let req = json_post(
+        "/api/auth/login",
+        serde_json::json!({"password": password}),
+        None,
+    );
     let (_, json) = into_status_and_json(call(router, req).await).await;
     json["token"].as_str().unwrap().to_string()
 }
@@ -151,7 +157,12 @@ async fn test_index_returns_html() {
     let req = Request::builder().uri("/").body(Body::empty()).unwrap();
     let resp = call(&mut router, req).await;
     assert_eq!(resp.status(), StatusCode::OK);
-    let ct = resp.headers().get("content-type").unwrap().to_str().unwrap();
+    let ct = resp
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert!(ct.contains("text/html"));
 }
 
@@ -161,7 +172,8 @@ async fn test_index_returns_html() {
 async fn test_auth_status_no_password() {
     let ctx = test_context();
     let mut router = build_router(&ctx);
-    let (status, json) = into_status_and_json(call(&mut router, get_req("/api/auth/status", None)).await).await;
+    let (status, json) =
+        into_status_and_json(call(&mut router, get_req("/api/auth/status", None)).await).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["auth_required"], false);
 }
@@ -172,7 +184,8 @@ async fn test_auth_status_with_password() {
     config.server.password = "secret".to_string();
     let ctx = test_context_with_config(config);
     let mut router = build_router(&ctx);
-    let (status, json) = into_status_and_json(call(&mut router, get_req("/api/auth/status", None)).await).await;
+    let (status, json) =
+        into_status_and_json(call(&mut router, get_req("/api/auth/status", None)).await).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["auth_required"], true);
 }
@@ -194,7 +207,11 @@ async fn test_auth_login_correct_password() {
     config.server.password = "correct".to_string();
     let ctx = test_context_with_config(config);
     let mut router = build_router(&ctx);
-    let req = json_post("/api/auth/login", serde_json::json!({"password": "correct"}), None);
+    let req = json_post(
+        "/api/auth/login",
+        serde_json::json!({"password": "correct"}),
+        None,
+    );
     let (status, json) = into_status_and_json(call(&mut router, req).await).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["ok"], true);
@@ -207,7 +224,11 @@ async fn test_auth_login_wrong_password() {
     config.server.password = "correct".to_string();
     let ctx = test_context_with_config(config);
     let mut router = build_router(&ctx);
-    let req = json_post("/api/auth/login", serde_json::json!({"password": "wrong"}), None);
+    let req = json_post(
+        "/api/auth/login",
+        serde_json::json!({"password": "wrong"}),
+        None,
+    );
     let resp = call(&mut router, req).await;
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
@@ -219,7 +240,9 @@ async fn test_auth_verify_valid_token() {
     let ctx = test_context_with_config(config);
     let mut router = build_router(&ctx);
     let token = login(&mut router, "pass").await;
-    let (status, json) = into_status_and_json(call(&mut router, get_req("/api/auth/verify", Some(&token))).await).await;
+    let (status, json) =
+        into_status_and_json(call(&mut router, get_req("/api/auth/verify", Some(&token))).await)
+            .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["ok"], true);
     assert_eq!(json["auth_required"], true);
@@ -239,7 +262,8 @@ async fn test_auth_verify_invalid_token() {
 async fn test_auth_verify_no_password_required() {
     let ctx = test_context();
     let mut router = build_router(&ctx);
-    let (status, json) = into_status_and_json(call(&mut router, get_req("/api/auth/verify", None)).await).await;
+    let (status, json) =
+        into_status_and_json(call(&mut router, get_req("/api/auth/verify", None)).await).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["auth_required"], false);
 }
@@ -282,7 +306,8 @@ async fn test_watchers_requires_auth() {
 async fn test_events_empty_store() {
     let ctx = test_context();
     let mut router = build_router(&ctx);
-    let (status, json) = into_status_and_json(call(&mut router, get_req("/api/events", None)).await).await;
+    let (status, json) =
+        into_status_and_json(call(&mut router, get_req("/api/events", None)).await).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["total"], 0);
     assert_eq!(json["page"], 1);
@@ -295,7 +320,8 @@ async fn test_events_pagination_defaults() {
     let ctx = test_context();
     seed_events(ctx.store.as_ref().unwrap(), 5).await;
     let mut router = build_router(&ctx);
-    let (_, json) = into_status_and_json(call(&mut router, get_req("/api/events", None)).await).await;
+    let (_, json) =
+        into_status_and_json(call(&mut router, get_req("/api/events", None)).await).await;
     assert_eq!(json["total"], 5);
     assert_eq!(json["total_pages"], 1);
     assert_eq!(json["events"].as_array().unwrap().len(), 5);
@@ -306,7 +332,10 @@ async fn test_events_pagination_page2() {
     let ctx = test_context();
     seed_events(ctx.store.as_ref().unwrap(), 25).await;
     let mut router = build_router(&ctx);
-    let (_, json) = into_status_and_json(call(&mut router, get_req("/api/events?page=2&per_page=10", None)).await).await;
+    let (_, json) = into_status_and_json(
+        call(&mut router, get_req("/api/events?page=2&per_page=10", None)).await,
+    )
+    .await;
     assert_eq!(json["total"], 25);
     assert_eq!(json["page"], 2);
     assert_eq!(json["per_page"], 10);
@@ -318,7 +347,9 @@ async fn test_events_pagination_page2() {
 async fn test_events_per_page_clamped_max() {
     let ctx = test_context();
     let mut router = build_router(&ctx);
-    let (_, json) = into_status_and_json(call(&mut router, get_req("/api/events?per_page=999", None)).await).await;
+    let (_, json) =
+        into_status_and_json(call(&mut router, get_req("/api/events?per_page=999", None)).await)
+            .await;
     assert_eq!(json["per_page"], 200);
 }
 
@@ -326,7 +357,9 @@ async fn test_events_per_page_clamped_max() {
 async fn test_events_per_page_clamped_min() {
     let ctx = test_context();
     let mut router = build_router(&ctx);
-    let (_, json) = into_status_and_json(call(&mut router, get_req("/api/events?per_page=0", None)).await).await;
+    let (_, json) =
+        into_status_and_json(call(&mut router, get_req("/api/events?per_page=0", None)).await)
+            .await;
     assert_eq!(json["per_page"], 1);
 }
 
@@ -334,11 +367,39 @@ async fn test_events_per_page_clamped_min() {
 async fn test_events_filter_by_type() {
     let ctx = test_context();
     let store = ctx.store.as_ref().unwrap();
-    store.insert(&FsEvent::new(EventType::Created, PathBuf::from("/a"), PathBuf::from("/w"))).await.unwrap();
-    store.insert(&FsEvent::new(EventType::Modified, PathBuf::from("/b"), PathBuf::from("/w"))).await.unwrap();
-    store.insert(&FsEvent::new(EventType::Deleted, PathBuf::from("/c"), PathBuf::from("/w"))).await.unwrap();
+    store
+        .insert(&FsEvent::new(
+            EventType::Created,
+            PathBuf::from("/a"),
+            PathBuf::from("/w"),
+        ))
+        .await
+        .unwrap();
+    store
+        .insert(&FsEvent::new(
+            EventType::Modified,
+            PathBuf::from("/b"),
+            PathBuf::from("/w"),
+        ))
+        .await
+        .unwrap();
+    store
+        .insert(&FsEvent::new(
+            EventType::Deleted,
+            PathBuf::from("/c"),
+            PathBuf::from("/w"),
+        ))
+        .await
+        .unwrap();
     let mut router = build_router(&ctx);
-    let (_, json) = into_status_and_json(call(&mut router, get_req("/api/events?types=CREATE,DELETE", None)).await).await;
+    let (_, json) = into_status_and_json(
+        call(
+            &mut router,
+            get_req("/api/events?types=CREATE,DELETE", None),
+        )
+        .await,
+    )
+    .await;
     assert_eq!(json["total"], 2);
 }
 
@@ -347,9 +408,17 @@ async fn test_events_filter_by_target_type() {
     let ctx = test_context();
     let store = ctx.store.as_ref().unwrap();
 
-    let mut dir_event = FsEvent::new(EventType::Created, PathBuf::from("/dir"), PathBuf::from("/w"));
+    let mut dir_event = FsEvent::new(
+        EventType::Created,
+        PathBuf::from("/dir"),
+        PathBuf::from("/w"),
+    );
     dir_event.is_dir = Some(true);
-    let mut file_event = FsEvent::new(EventType::Created, PathBuf::from("/file"), PathBuf::from("/w"));
+    let mut file_event = FsEvent::new(
+        EventType::Created,
+        PathBuf::from("/file"),
+        PathBuf::from("/w"),
+    );
     file_event.is_dir = Some(false);
 
     store.insert(&dir_event).await.unwrap();
@@ -357,11 +426,16 @@ async fn test_events_filter_by_target_type() {
 
     let mut router = build_router(&ctx);
 
-    let (_, json) = into_status_and_json(call(&mut router, get_req("/api/events?target_type=dir", None)).await).await;
+    let (_, json) =
+        into_status_and_json(call(&mut router, get_req("/api/events?target_type=dir", None)).await)
+            .await;
     assert_eq!(json["total"], 1);
     assert_eq!(json["events"][0]["is_dir"], true);
 
-    let (_, json) = into_status_and_json(call(&mut router, get_req("/api/events?target_type=file", None)).await).await;
+    let (_, json) = into_status_and_json(
+        call(&mut router, get_req("/api/events?target_type=file", None)).await,
+    )
+    .await;
     assert_eq!(json["total"], 1);
     assert_eq!(json["events"][0]["is_dir"], false);
 }
@@ -371,7 +445,8 @@ async fn test_events_no_store_returns_empty() {
     let mut ctx = test_context();
     ctx.store = None;
     let mut router = build_router(&ctx);
-    let (_, json) = into_status_and_json(call(&mut router, get_req("/api/events", None)).await).await;
+    let (_, json) =
+        into_status_and_json(call(&mut router, get_req("/api/events", None)).await).await;
     assert_eq!(json["total"], 0);
 }
 
@@ -381,7 +456,8 @@ async fn test_events_no_store_returns_empty() {
 async fn test_config_get_defaults() {
     let ctx = test_context();
     let mut router = build_router(&ctx);
-    let (status, json) = into_status_and_json(call(&mut router, get_req("/api/config", None)).await).await;
+    let (status, json) =
+        into_status_and_json(call(&mut router, get_req("/api/config", None)).await).await;
     assert_eq!(status, StatusCode::OK);
     assert!(json["watches"].as_array().unwrap().is_empty());
     assert_eq!(json["database_enabled"], true);
@@ -394,7 +470,8 @@ async fn test_config_get_masks_email_password() {
     config.notifications.email.password = "real-password".to_string();
     let ctx = test_context_with_config(config);
     let mut router = build_router(&ctx);
-    let (_, json) = into_status_and_json(call(&mut router, get_req("/api/config", None)).await).await;
+    let (_, json) =
+        into_status_and_json(call(&mut router, get_req("/api/config", None)).await).await;
     assert_eq!(json["email_password"], "••••••••");
 }
 
@@ -402,7 +479,8 @@ async fn test_config_get_masks_email_password() {
 async fn test_config_get_empty_password_not_masked() {
     let ctx = test_context();
     let mut router = build_router(&ctx);
-    let (_, json) = into_status_and_json(call(&mut router, get_req("/api/config", None)).await).await;
+    let (_, json) =
+        into_status_and_json(call(&mut router, get_req("/api/config", None)).await).await;
     assert_eq!(json["email_password"], "");
 }
 
@@ -418,7 +496,9 @@ async fn test_config_put_global_updates() {
         "email_enabled": true,
         "email_smtp_server": "smtp.example.com",
     });
-    let (status, json) = into_status_and_json(call(&mut router, json_put("/api/config/global", body, None)).await).await;
+    let (status, json) =
+        into_status_and_json(call(&mut router, json_put("/api/config/global", body, None)).await)
+            .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["ok"], true);
     assert_eq!(json["logging_level"], "debug");
@@ -442,7 +522,9 @@ async fn test_config_add_watch() {
         "include": ["*.rs"],
         "exclude": ["target/**"],
     });
-    let (status, json) = into_status_and_json(call(&mut router, json_post("/api/config/watches", body, None)).await).await;
+    let (status, json) =
+        into_status_and_json(call(&mut router, json_post("/api/config/watches", body, None)).await)
+            .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["ok"], true);
     assert_eq!(json["idx"], 0);
@@ -457,7 +539,11 @@ async fn test_config_add_watch_duplicate_409() {
     let ctx = test_context();
     let mut router = build_router(&ctx);
     let body = serde_json::json!({"path": "/tmp/dup"});
-    call(&mut router, json_post("/api/config/watches", body.clone(), None)).await;
+    call(
+        &mut router,
+        json_post("/api/config/watches", body.clone(), None),
+    )
+    .await;
     let resp = call(&mut router, json_post("/api/config/watches", body, None)).await;
     assert_eq!(resp.status(), StatusCode::CONFLICT);
 }
@@ -466,7 +552,11 @@ async fn test_config_add_watch_duplicate_409() {
 async fn test_config_add_watch_empty_path_400() {
     let ctx = test_context();
     let mut router = build_router(&ctx);
-    let resp = call(&mut router, json_post("/api/config/watches", serde_json::json!({"path": ""}), None)).await;
+    let resp = call(
+        &mut router,
+        json_post("/api/config/watches", serde_json::json!({"path": ""}), None),
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
@@ -474,7 +564,15 @@ async fn test_config_add_watch_empty_path_400() {
 async fn test_config_add_watch_missing_path_400() {
     let ctx = test_context();
     let mut router = build_router(&ctx);
-    let resp = call(&mut router, json_post("/api/config/watches", serde_json::json!({"recursive": true}), None)).await;
+    let resp = call(
+        &mut router,
+        json_post(
+            "/api/config/watches",
+            serde_json::json!({"recursive": true}),
+            None,
+        ),
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
@@ -496,7 +594,10 @@ async fn test_config_put_watch_partial_update() {
     let ctx = test_context_with_config(config);
     let mut router = build_router(&ctx);
     let body = serde_json::json!({"recursive": true});
-    let (_, json) = into_status_and_json(call(&mut router, json_put("/api/config/watches/0", body, None)).await).await;
+    let (_, json) = into_status_and_json(
+        call(&mut router, json_put("/api/config/watches/0", body, None)).await,
+    )
+    .await;
     assert_eq!(json["watch"]["recursive"], true);
     assert_eq!(json["watch"]["include"], serde_json::json!(["*.txt"]));
 }
@@ -505,7 +606,15 @@ async fn test_config_put_watch_partial_update() {
 async fn test_config_put_watch_out_of_bounds_404() {
     let ctx = test_context();
     let mut router = build_router(&ctx);
-    let resp = call(&mut router, json_put("/api/config/watches/99", serde_json::json!({"recursive": true}), None)).await;
+    let resp = call(
+        &mut router,
+        json_put(
+            "/api/config/watches/99",
+            serde_json::json!({"recursive": true}),
+            None,
+        ),
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
@@ -526,7 +635,9 @@ async fn test_config_delete_watch() {
     });
     let ctx = test_context_with_config(config);
     let mut router = build_router(&ctx);
-    let (status, json) = into_status_and_json(call(&mut router, delete_req("/api/config/watches/0", None)).await).await;
+    let (status, json) =
+        into_status_and_json(call(&mut router, delete_req("/api/config/watches/0", None)).await)
+            .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["removed"], "/tmp/to-delete");
 
@@ -548,7 +659,8 @@ async fn test_config_delete_watch_out_of_bounds_404() {
 async fn test_watchers_list_empty() {
     let ctx = test_context();
     let mut router = build_router(&ctx);
-    let (status, json) = into_status_and_json(call(&mut router, get_req("/api/watchers", None)).await).await;
+    let (status, json) =
+        into_status_and_json(call(&mut router, get_req("/api/watchers", None)).await).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["ok"], true);
     assert_eq!(json["count"], 0);
@@ -573,7 +685,8 @@ async fn test_metrics_chart_endpoint() {
     let ctx = test_context();
     ctx.metrics.record_event("CREATE", "/test");
     let mut router = build_router(&ctx);
-    let (status, json) = into_status_and_json(call(&mut router, get_req("/api/metrics/chart", None)).await).await;
+    let (status, json) =
+        into_status_and_json(call(&mut router, get_req("/api/metrics/chart", None)).await).await;
     assert_eq!(status, StatusCode::OK);
     assert!(json["events_total"].as_u64().unwrap() > 0);
 }
@@ -635,13 +748,42 @@ async fn test_metrics_prometheus_format() {
 #[tokio::test]
 async fn test_store_insert_and_query() {
     let store = EventStore::open_memory().unwrap();
-    store.insert(&FsEvent::new(EventType::Created, PathBuf::from("/a"), PathBuf::from("/w"))).await.unwrap();
-    store.insert(&FsEvent::new(EventType::Modified, PathBuf::from("/b"), PathBuf::from("/w"))).await.unwrap();
+    store
+        .insert(&FsEvent::new(
+            EventType::Created,
+            PathBuf::from("/a"),
+            PathBuf::from("/w"),
+        ))
+        .await
+        .unwrap();
+    store
+        .insert(&FsEvent::new(
+            EventType::Modified,
+            PathBuf::from("/b"),
+            PathBuf::from("/w"),
+        ))
+        .await
+        .unwrap();
 
-    let events = store.query(100, 0, &[], None, None, None, None, None).await.unwrap();
+    let events = store
+        .query(100, 0, &[], None, None, None, None, None)
+        .await
+        .unwrap();
     assert_eq!(events.len(), 2);
 
-    let events = store.query(100, 0, &["CREATE".to_string()], None, None, None, None, None).await.unwrap();
+    let events = store
+        .query(
+            100,
+            0,
+            &["CREATE".to_string()],
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].event_type, EventType::Created);
 }
@@ -650,12 +792,25 @@ async fn test_store_insert_and_query() {
 async fn test_store_pagination() {
     let store = EventStore::open_memory().unwrap();
     for i in 0..20 {
-        store.insert(&FsEvent::new(EventType::Created, PathBuf::from(format!("/f_{i}")), PathBuf::from("/w"))).await.unwrap();
+        store
+            .insert(&FsEvent::new(
+                EventType::Created,
+                PathBuf::from(format!("/f_{i}")),
+                PathBuf::from("/w"),
+            ))
+            .await
+            .unwrap();
     }
 
-    let events = store.query(10, 0, &[], None, None, None, None, None).await.unwrap();
+    let events = store
+        .query(10, 0, &[], None, None, None, None, None)
+        .await
+        .unwrap();
     assert_eq!(events.len(), 10);
-    let events = store.query(10, 10, &[], None, None, None, None, None).await.unwrap();
+    let events = store
+        .query(10, 10, &[], None, None, None, None, None)
+        .await
+        .unwrap();
     assert_eq!(events.len(), 10);
     assert_eq!(store.count().await.unwrap(), 20);
 }

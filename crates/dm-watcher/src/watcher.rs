@@ -1,6 +1,7 @@
 use dm_core::event::{EventType, FsEvent};
 use notify::event::{AccessKind, AccessMode, CreateKind, ModifyKind, RemoveKind, RenameMode};
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher, Config};
+use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use std::mem;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -66,12 +67,12 @@ impl FsWatcher {
     }
 
     /// Add a directory to watch based on a WatchConfig.
-    pub fn add_watch(
-        &mut self,
-        config: &dm_core::config::WatchConfig,
-    ) -> Result<(), String> {
+    pub fn add_watch(&mut self, config: &dm_core::config::WatchConfig) -> Result<(), String> {
         if !config.path.exists() {
-            return Err(format!("Watch path does not exist: {}", config.path.display()));
+            return Err(format!(
+                "Watch path does not exist: {}",
+                config.path.display()
+            ));
         }
 
         let recursive = if config.recursive {
@@ -84,7 +85,11 @@ impl FsWatcher {
             .watch(&config.path, recursive)
             .map_err(|e| format!("Failed to watch {}: {e}", config.path.display()))?;
 
-        info!("Watching: {} (recursive: {})", config.path.display(), config.recursive);
+        info!(
+            "Watching: {} (recursive: {})",
+            config.path.display(),
+            config.recursive
+        );
         Ok(())
     }
 
@@ -97,7 +102,6 @@ impl FsWatcher {
         Ok(())
     }
 }
-
 
 /// Debounce loop: collects events within a time window, then sends as a batch.
 /// All events are preserved — deduplication only removes truly identical events
@@ -123,7 +127,7 @@ fn debounce_loop(
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 // Flush all pending events as a batch
                 if !pending.is_empty() {
-                    let events: Vec<FsEvent> = pending.drain(..).collect();
+                    let events: Vec<FsEvent> = mem::take(&mut pending);
 
                     debug!("Debounced batch: {} events", events.len());
                     let _ = tx.send(WatchEvent::Batch(events));
@@ -145,12 +149,18 @@ fn debounce_loop(
 fn convert_event(event: &Event) -> Option<FsEvent> {
     let (event_type, path, target_path, is_dir) = match event.kind {
         // CREATE → Created (with file type from CreateKind)
-        EventKind::Create(CreateKind::File) => {
-            (EventType::Created, event.paths.first()?.clone(), None, Some(false))
-        }
-        EventKind::Create(CreateKind::Folder) => {
-            (EventType::Created, event.paths.first()?.clone(), None, Some(true))
-        }
+        EventKind::Create(CreateKind::File) => (
+            EventType::Created,
+            event.paths.first()?.clone(),
+            None,
+            Some(false),
+        ),
+        EventKind::Create(CreateKind::Folder) => (
+            EventType::Created,
+            event.paths.first()?.clone(),
+            None,
+            Some(true),
+        ),
         EventKind::Create(_) => {
             // CreateKind::Any or Other — try to stat the path
             let path = event.paths.first()?.clone();
@@ -179,7 +189,12 @@ fn convert_event(event: &Event) -> Option<FsEvent> {
         }
         EventKind::Modify(ModifyKind::Name(RenameMode::From)) => {
             // MOVED_FROM: file moved out of watched directory.
-            (EventType::MovedFrom, event.paths.first()?.clone(), None, None)
+            (
+                EventType::MovedFrom,
+                event.paths.first()?.clone(),
+                None,
+                None,
+            )
         }
         EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
             // MOVED_TO: file moved into watched directory.
@@ -193,12 +208,18 @@ fn convert_event(event: &Event) -> Option<FsEvent> {
         }
 
         // DELETE → Deleted (with file type from RemoveKind)
-        EventKind::Remove(RemoveKind::File) => {
-            (EventType::Deleted, event.paths.first()?.clone(), None, Some(false))
-        }
-        EventKind::Remove(RemoveKind::Folder) => {
-            (EventType::Deleted, event.paths.first()?.clone(), None, Some(true))
-        }
+        EventKind::Remove(RemoveKind::File) => (
+            EventType::Deleted,
+            event.paths.first()?.clone(),
+            None,
+            Some(false),
+        ),
+        EventKind::Remove(RemoveKind::Folder) => (
+            EventType::Deleted,
+            event.paths.first()?.clone(),
+            None,
+            Some(true),
+        ),
         EventKind::Remove(_) => {
             // RemoveKind::Any or Other — unknown type
             (EventType::Deleted, event.paths.first()?.clone(), None, None)

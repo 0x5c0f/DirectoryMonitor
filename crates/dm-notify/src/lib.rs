@@ -1,7 +1,7 @@
 pub mod email;
-pub mod syslog;
 pub mod script;
+pub mod syslog;
 
 pub use email::EmailNotifier;
-pub use syslog::SyslogNotifier;
 pub use script::ScriptExecutor;
+pub use syslog::SyslogNotifier;

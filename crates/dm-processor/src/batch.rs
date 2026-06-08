@@ -95,7 +95,11 @@ mod tests {
     use std::path::PathBuf;
 
     fn make_event(path: &str) -> FsEvent {
-        FsEvent::new(EventType::Created, PathBuf::from(path), PathBuf::from("/watch"))
+        FsEvent::new(
+            EventType::Created,
+            PathBuf::from(path),
+            PathBuf::from("/watch"),
+        )
     }
 
     #[test]

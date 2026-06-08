@@ -108,7 +108,8 @@ impl MetricsRegistry {
         self.events_total.inc();
         self.events_by_type.inc(&[("type", event_type)]);
         self.events_by_root.inc(&[("root", watch_root)]);
-        self.events_by_type_root.inc(&[("type", event_type), ("root", watch_root)]);
+        self.events_by_type_root
+            .inc(&[("type", event_type), ("root", watch_root)]);
 
         // Update time-series
         self.event_rate_1h.write().record(1);
@@ -427,7 +428,10 @@ mod tests {
         // Check counters
         assert_eq!(registry.events_total.get(), 4);
         assert_eq!(
-            registry.events_by_type.with_labels(&[("type", "CREATE")]).get(),
+            registry
+                .events_by_type
+                .with_labels(&[("type", "CREATE")])
+                .get(),
             2
         );
 
@@ -488,11 +492,17 @@ mod tests {
             2
         );
         assert_eq!(
-            registry.notify_sent.with_labels(&[("type", "syslog")]).get(),
+            registry
+                .notify_sent
+                .with_labels(&[("type", "syslog")])
+                .get(),
             1
         );
         assert_eq!(
-            registry.notify_failed.with_labels(&[("type", "email")]).get(),
+            registry
+                .notify_failed
+                .with_labels(&[("type", "email")])
+                .get(),
             1
         );
     }

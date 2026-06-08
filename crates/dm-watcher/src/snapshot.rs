@@ -28,7 +28,11 @@ impl DirectorySnapshot {
     pub fn new(root: &Path, recursive: bool) -> std::io::Result<Self> {
         let mut files = HashMap::new();
         Self::scan_directory(root, recursive, &mut files)?;
-        info!("Snapshot of {} taken: {} entries", root.display(), files.len());
+        info!(
+            "Snapshot of {} taken: {} entries",
+            root.display(),
+            files.len()
+        );
         Ok(Self {
             files,
             taken_at: chrono::Utc::now(),
@@ -73,12 +77,8 @@ impl DirectorySnapshot {
                     // File is new
                     debug!("New file detected: {}", path.display());
                     events.push(
-                        FsEvent::new(
-                            EventType::Created,
-                            path.clone(),
-                            watch_root.to_path_buf(),
-                        )
-                        .with_is_dir(new_meta.is_dir),
+                        FsEvent::new(EventType::Created, path.clone(), watch_root.to_path_buf())
+                            .with_is_dir(new_meta.is_dir),
                     );
                 }
                 Some(old_meta) => {
@@ -103,12 +103,8 @@ impl DirectorySnapshot {
             if !newer.files.contains_key(path) {
                 debug!("Deleted file detected: {}", path.display());
                 events.push(
-                    FsEvent::new(
-                        EventType::Deleted,
-                        path.clone(),
-                        watch_root.to_path_buf(),
-                    )
-                    .with_is_dir(old_meta.is_dir),
+                    FsEvent::new(EventType::Deleted, path.clone(), watch_root.to_path_buf())
+                        .with_is_dir(old_meta.is_dir),
                 );
             }
         }

@@ -48,10 +48,7 @@ impl ScriptExecutor {
                 if output.status.success() {
                     debug!("Script completed successfully: {}", script);
                     if !output.stdout.is_empty() {
-                        debug!(
-                            "Script stdout: {}",
-                            String::from_utf8_lossy(&output.stdout)
-                        );
+                        debug!("Script stdout: {}", String::from_utf8_lossy(&output.stdout));
                     }
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr);

@@ -127,8 +127,8 @@ impl WatcherManager {
 
         // Build set of current watched paths
         let current_paths: HashMap<PathBuf, usize> = watchers
-            .iter()
-            .map(|(_, entry)| (entry.config.path.clone(), entry.id))
+            .values()
+            .map(|entry| (entry.config.path.clone(), entry.id))
             .collect();
 
         // Build set of new config paths

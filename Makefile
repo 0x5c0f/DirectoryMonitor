@@ -46,10 +46,6 @@ test:
 lint:
 	cargo clippy -- -D warnings
 
-## Format code
-fmt:
-	cargo fmt
-
 ## Clean build artifacts
 clean:
 	cargo clean
@@ -85,10 +81,6 @@ run: release
 validate: release
 	./$(TARGET_DIR)/$(APP_NAME)$(EXT) -c config.example.toml validate
 
-## Watch for changes and rebuild (requires cargo-watch)
-watch:
-	cargo watch -x 'build --release'
-
 ## Show help
 help:
 	@echo "Directory Monitor v$(VERSION)"
@@ -99,12 +91,10 @@ help:
 	@echo "  make release      Build release"
 	@echo "  make test         Run tests"
 	@echo "  make lint         Run clippy"
-	@echo "  make fmt          Format code"
 	@echo "  make clean        Clean build artifacts"
 	@echo "  make dist         Create distribution tarball"
 	@echo "  make install      Install to ~/.local/bin"
 	@echo "  make uninstall    Remove from ~/.local/bin"
 	@echo "  make run          Run with example config"
 	@echo "  make validate     Validate example config"
-	@echo "  make watch        Auto-rebuild on changes"
 	@echo "  make help         Show this help"

@@ -113,11 +113,7 @@ pub struct FsEvent {
 }
 
 impl FsEvent {
-    pub fn new(
-        event_type: EventType,
-        path: PathBuf,
-        watch_root: PathBuf,
-    ) -> Self {
+    pub fn new(event_type: EventType, path: PathBuf, watch_root: PathBuf) -> Self {
         Self {
             id: Uuid::new_v4(),
             timestamp: Utc::now(),
@@ -181,7 +177,10 @@ impl FsEvent {
         result = result.replace("%path%", self.path.to_str().unwrap_or(""));
         result = result.replace(
             "%target%",
-            self.target_path.as_ref().and_then(|p| p.to_str()).unwrap_or(""),
+            self.target_path
+                .as_ref()
+                .and_then(|p| p.to_str())
+                .unwrap_or(""),
         );
         result = result.replace("%type%", type_str);
         result = result.replace("%user%", self.user.as_deref().unwrap_or("unknown"));
@@ -308,8 +307,12 @@ mod tests {
             watch_root: PathBuf::from("/home/user"),
         };
 
-        let result = event.format_with("%event% %type% %file% in %directory% by %user% via %process%");
-        assert_eq!(result, "CREATE FILE file.txt in /home/user by alice via vim");
+        let result =
+            event.format_with("%event% %type% %file% in %directory% by %user% via %process%");
+        assert_eq!(
+            result,
+            "CREATE FILE file.txt in /home/user by alice via vim"
+        );
     }
 
     #[test]
@@ -368,8 +371,8 @@ mod tests {
 
     #[test]
     fn test_fsevent_with_target() {
-        let event = make_event(EventType::Renamed, "/old.txt")
-            .with_target(PathBuf::from("/new.txt"));
+        let event =
+            make_event(EventType::Renamed, "/old.txt").with_target(PathBuf::from("/new.txt"));
         assert_eq!(event.target_path, Some(PathBuf::from("/new.txt")));
     }
 
@@ -384,15 +387,13 @@ mod tests {
 
     #[test]
     fn test_fsevent_with_user() {
-        let event = make_event(EventType::Created, "/file.txt")
-            .with_user("bob".to_string());
+        let event = make_event(EventType::Created, "/file.txt").with_user("bob".to_string());
         assert_eq!(event.user, Some("bob".to_string()));
     }
 
     #[test]
     fn test_fsevent_with_process() {
-        let event = make_event(EventType::Created, "/file.txt")
-            .with_process("git".to_string());
+        let event = make_event(EventType::Created, "/file.txt").with_process("git".to_string());
         assert_eq!(event.process, Some("git".to_string()));
     }
 

@@ -98,11 +98,14 @@ impl EmailNotifier {
         self.send_email(&subject, &body, recipients).await
     }
 
-    async fn send_email(&self, subject: &str, body: &str, recipients: &[String]) -> Result<(), String> {
-        let credentials = Credentials::new(
-            self.config.username.clone(),
-            self.config.password.clone(),
-        );
+    async fn send_email(
+        &self,
+        subject: &str,
+        body: &str,
+        recipients: &[String],
+    ) -> Result<(), String> {
+        let credentials =
+            Credentials::new(self.config.username.clone(), self.config.password.clone());
 
         let mailer = if self.config.use_tls {
             AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&self.config.smtp_server)

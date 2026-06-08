@@ -60,7 +60,11 @@ impl EventStore {
                 event.watch_root.to_string_lossy().to_string(),
             ],
         )?;
-        debug!("Stored event: {} {}", event.event_type, event.path.display());
+        debug!(
+            "Stored event: {} {}",
+            event.event_type,
+            event.path.display()
+        );
         Ok(())
     }
 
@@ -91,6 +95,7 @@ impl EventStore {
     }
 
     /// Query events with optional filters.
+    #[allow(clippy::too_many_arguments)]
     pub async fn query(
         &self,
         limit: usize,
@@ -103,9 +108,8 @@ impl EventStore {
         is_dir: Option<bool>,
     ) -> Result<Vec<FsEvent>, StorageError> {
         let conn = self.conn.lock().await;
-        let (where_clause, mut param_values) = Self::build_where_clause(
-            event_types, watch_root, search, after, before, is_dir,
-        );
+        let (where_clause, mut param_values) =
+            Self::build_where_clause(event_types, watch_root, search, after, before, is_dir);
         let mut sql = format!(
             "SELECT id, timestamp, event_type, path, target_path, is_dir, user_name, process_name, watch_root
              FROM events WHERE 1=1{}",
@@ -206,9 +210,8 @@ impl EventStore {
         is_dir: Option<bool>,
     ) -> Result<usize, StorageError> {
         let conn = self.conn.lock().await;
-        let (where_clause, param_values) = Self::build_where_clause(
-            event_types, watch_root, search, after, before, is_dir,
-        );
+        let (where_clause, param_values) =
+            Self::build_where_clause(event_types, watch_root, search, after, before, is_dir);
         let sql = format!("SELECT COUNT(*) FROM events WHERE 1=1{}", where_clause);
 
         let params_ref: Vec<&dyn rusqlite::types::ToSql> =
