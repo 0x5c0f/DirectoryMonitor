@@ -23,9 +23,9 @@ else
 endif
 
 ARCH        := $(shell uname -m 2>/dev/null || echo x86_64)
-DIST_NAME   := $(APP_NAME)-$(VERSION)-$(PLATFORM)-$(ARCH)
+DIST_NAME   := $(APP_NAME)-$(PLATFORM)-$(ARCH)
 
-.PHONY: all build release test clean dist install help
+.PHONY: all build release test clean dist install uninstall run validate help
 
 ## Default target
 all: release
@@ -51,16 +51,21 @@ clean:
 	cargo clean
 	rm -rf $(DIST_DIR)
 
-## Create distribution package
+## Create distribution package for current platform
 dist: release
 	@mkdir -p $(DIST_DIR)/$(DIST_NAME)
 	@cp $(TARGET_DIR)/$(APP_NAME)$(EXT) $(DIST_DIR)/$(DIST_NAME)/
 	@cp config.example.toml $(DIST_DIR)/$(DIST_NAME)/config.toml
-	@cp README.md $(DIST_DIR)/$(DIST_NAME)/
-	@echo "Creating $(DIST_DIR)/$(DIST_NAME).tar.gz..."
-	@tar -czf $(DIST_DIR)/$(DIST_NAME).tar.gz -C $(DIST_DIR) $(DIST_NAME)
-	@rm -rf $(DIST_DIR)/$(DIST_NAME)
-	@echo "Done: $(DIST_DIR)/$(DIST_NAME).tar.gz"
+	@cp packaging/README.md $(DIST_DIR)/$(DIST_NAME)/README.md
+	@if [ -d packaging/$(PLATFORM) ]; then \
+		cp -r packaging/$(PLATFORM)/* $(DIST_DIR)/$(DIST_NAME)/; \
+	fi
+	@if [ "$(PLATFORM)" = "windows" ]; then \
+		cd $(DIST_DIR) && 7z a $(DIST_NAME).zip $(DIST_NAME)/ && rm -rf $(DIST_NAME); \
+	else \
+		tar -czf $(DIST_DIR)/$(DIST_NAME).tar.gz -C $(DIST_DIR) $(DIST_NAME) && rm -rf $(DIST_DIR)/$(DIST_NAME); \
+	fi
+	@echo "Created: $(DIST_DIR)/$(DIST_NAME).$(if $(filter windows,$(PLATFORM)),zip,tar.gz)"
 
 ## Install to ~/.local/bin (Linux/macOS)
 install: release
@@ -92,9 +97,11 @@ help:
 	@echo "  make test         Run tests"
 	@echo "  make lint         Run clippy"
 	@echo "  make clean        Clean build artifacts"
-	@echo "  make dist         Create distribution tarball"
+	@echo "  make dist         Create distribution package"
 	@echo "  make install      Install to ~/.local/bin"
 	@echo "  make uninstall    Remove from ~/.local/bin"
 	@echo "  make run          Run with example config"
 	@echo "  make validate     Validate example config"
 	@echo "  make help         Show this help"
+	@echo ""
+	@echo "Platform: $(PLATFORM)-$(ARCH)"
