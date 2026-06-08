@@ -48,7 +48,7 @@ fn run_service_inner() -> Result<()> {
         }
     };
 
-    let status_handle = service_control_handler::register(handler)?;
+    let status_handle = service_control_handler::register(SERVICE_NAME, handler)?;
 
     // Parse command line arguments to get config path
     let args: Vec<String> = std::env::args().collect();
