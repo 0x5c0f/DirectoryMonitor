@@ -3,8 +3,8 @@ use std::ffi::OsString;
 use std::sync::mpsc;
 use windows_service::{
     service::{
-        ServiceAccess, ServiceControl, ServiceControlAccept, ServiceErrorControl, ServiceExitCode,
-        ServiceInfo, ServiceStartType, ServiceState, ServiceStatus, ServiceType,
+        ServiceControl, ServiceControlAccept, ServiceExitCode,
+        ServiceState, ServiceStatus, ServiceType,
     },
     service_control_handler::{self, ServiceControlHandlerResult},
     service_dispatcher,
@@ -17,9 +17,12 @@ const SERVICE_NAME: &str = "DirectoryMonitor";
 const SERVICE_DISPLAY_NAME: &str = "Directory Monitor";
 const SERVICE_DESCRIPTION: &str = "Cross-platform filesystem monitoring service";
 
+// Generate the FFI entry point
+windows_service::define_windows_service!(ffi_service_main, service_main);
+
 /// Entry point for Windows service mode.
 pub fn run_service(_config: AppConfig, _config_path: &std::path::Path) -> Result<()> {
-    service_dispatcher::start(SERVICE_NAME, service_main)?;
+    service_dispatcher::start(SERVICE_NAME, ffi_service_main)?;
     Ok(())
 }
 
@@ -40,11 +43,12 @@ fn run_service_inner() -> Result<()> {
                 let _ = shutdown_tx.send(());
                 ServiceControlHandlerResult::NoError
             }
+            ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
             _ => ServiceControlHandlerResult::NotImplemented,
         }
     };
 
-    let status_handle = service_control_handler::register_handler(SERVICE_NAME, handler)?;
+    let status_handle = service_control_handler::register(handler)?;
 
     // Parse command line arguments to get config path
     let args: Vec<String> = std::env::args().collect();
