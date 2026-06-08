@@ -9,6 +9,7 @@ pub struct EventPayload {
     pub event_type: String,
     pub path: String,
     pub target_path: Option<String>,
+    pub is_dir: Option<bool>,
     pub watch_root: String,
 }
 
@@ -20,6 +21,7 @@ impl From<&FsEvent> for EventPayload {
             event_type: e.event_type.to_string(),
             path: e.path.display().to_string(),
             target_path: e.target_path.as_ref().map(|p| p.display().to_string()),
+            is_dir: e.is_dir,
             watch_root: e.watch_root.display().to_string(),
         }
     }

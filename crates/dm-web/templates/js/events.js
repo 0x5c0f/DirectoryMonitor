@@ -1,3 +1,56 @@
+// ── Target Type Filter ─────────────────────────────
+let currentTargetType = ''; // '' = all, 'file', 'dir'
+
+function setTargetType(type) {
+  currentTargetType = type;
+
+  // Update button states
+  document.querySelectorAll('.target-type-option').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.value === type);
+  });
+
+  // Update label
+  const label = type === 'file' ? 'FILE' : type === 'dir' ? 'DIR' : '所有目标';
+  document.getElementById('targetTypeLabel').textContent = label;
+
+  // Save to localStorage
+  if (type) {
+    localStorage.setItem('dm_target_type', type);
+  } else {
+    localStorage.removeItem('dm_target_type');
+  }
+
+  // Close dropdown
+  document.getElementById('targetTypeDropdown').classList.remove('open');
+
+  loadHistory(1);
+}
+
+// Toggle dropdown
+document.getElementById('targetTypeBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const dropdown = document.getElementById('targetTypeDropdown');
+  const isOpen = dropdown.classList.toggle('open');
+  document.getElementById('targetTypeBtn').setAttribute('aria-expanded', isOpen);
+});
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  const dropdown = document.getElementById('targetTypeDropdown');
+  if (!dropdown.contains(e.target)) {
+    dropdown.classList.remove('open');
+    document.getElementById('targetTypeBtn').setAttribute('aria-expanded', 'false');
+  }
+});
+
+// Restore from localStorage
+(function() {
+  const saved = localStorage.getItem('dm_target_type');
+  if (saved) {
+    setTargetType(saved);
+  }
+})();
+
 // ── Event Type Filter ─────────────────────────────────
 let selectedTypes = new Set(); // empty = all types
 
@@ -71,13 +124,15 @@ function clearAllTypes() {
 // Toggle dropdown
 typeFilterBtn.addEventListener('click', (e) => {
   e.stopPropagation();
-  typeFilterDropdown.classList.toggle('open');
+  const isOpen = typeFilterDropdown.classList.toggle('open');
+  typeFilterBtn.setAttribute('aria-expanded', isOpen);
 });
 
 // Close dropdown when clicking outside
 document.addEventListener('click', (e) => {
   if (!typeFilterDropdown.contains(e.target)) {
     typeFilterDropdown.classList.remove('open');
+    typeFilterBtn.setAttribute('aria-expanded', 'false');
   }
 });
 
@@ -105,10 +160,13 @@ function renderEvents() {
   }
   let html = '';
   for (const e of allEvents) {
+    const typeLabel = e.is_dir === true ? 'DIR' : e.is_dir === false ? 'FILE' : '-';
+    const typeClass = e.is_dir === true ? 'type-dir' : e.is_dir === false ? 'type-file' : 'type-unknown';
     html += '<div class="event-item">' +
       '<span class="event-time">' + formatTime(e.timestamp) + '</span>' +
       '<span class="event-type t-' + e.event_type + '">' + e.event_type + '</span>' +
-      '<span class="event-path" title="' + escHtml(e.path) + '">' + escHtml(e.path) + '</span>' +
+      '<span class="event-target-type ' + typeClass + '">' + typeLabel + '</span>' +
+      '<span class="event-path-wrap"><span class="event-path" data-tip="' + escHtml(e.path) + '">' + escHtml(e.path) + '</span></span>' +
       (e.target_path ? '<span class="event-target">→ ' + escHtml(e.target_path) + '</span>' : '') +
       '</div>';
   }
@@ -121,6 +179,49 @@ function addEvent(e) {
   if (liveEvents.length > PER_PAGE) liveEvents.pop();
   renderEvents();
 }
+
+// Path toast: tap to show full path at bottom
+(function() {
+  const toast = document.createElement('div');
+  toast.className = 'path-toast';
+  toast.innerHTML =
+    '<span class="path-toast-text"></span>' +
+    '<button class="path-toast-btn" id="pathCopyBtn" title="复制路径">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>' +
+    '</button>';
+  document.body.appendChild(toast);
+
+  const textEl = toast.querySelector('.path-toast-text');
+  const copyBtn = document.getElementById('pathCopyBtn');
+
+  list.addEventListener('click', (e) => {
+    const path = e.target.closest('.event-path[data-tip]');
+    if (!path) return;
+    e.stopPropagation();
+    const full = path.getAttribute('data-tip');
+    textEl.textContent = full;
+    toast.classList.add('visible');
+    copyBtn.classList.remove('copied');
+  });
+
+  copyBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const text = textEl.textContent;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => {
+        copyBtn.classList.add('copied');
+        setTimeout(() => copyBtn.classList.remove('copied'), 1500);
+      });
+    }
+  });
+
+  // 点击其他地方关闭
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.event-path[data-tip]') && !e.target.closest('.path-toast')) {
+      toast.classList.remove('visible');
+    }
+  });
+})();
 
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -281,7 +382,7 @@ function applyCustomTime() {
   loadHistory(1);
 }
 
-// Update loadHistory to include time range
+// Update loadHistory to include time range and target type
 const originalLoadHistory = loadHistory;
 loadHistory = async function(page) {
   page = page || currentPage || 1;
@@ -298,6 +399,10 @@ loadHistory = async function(page) {
   }
   if (currentTimeBefore) {
     url += '&before=' + encodeURIComponent(currentTimeBefore);
+  }
+  // 传递目标类型过滤
+  if (currentTargetType) {
+    url += '&target_type=' + encodeURIComponent(currentTargetType);
   }
   try {
     const resp = await fetch(url, { headers: authHeaders() });

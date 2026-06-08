@@ -31,6 +31,27 @@ pub struct AppState {
     pub metrics: Arc<MetricsRegistry>,
 }
 
+/// Build the axum `Router` with all routes and shared state.
+pub fn build_router(state: AppState) -> Router {
+    Router::new()
+        .route("/", get(index_handler))
+        .route("/ws", get(ws_handler))
+        .route("/api/events", get(events_handler))
+        .route("/api/config", get(config_get_handler))
+        .route("/api/config/watches", post(config_add_watch_handler))
+        .route("/api/config/watches/{idx}", put(config_put_watch_handler))
+        .route("/api/config/watches/{idx}", delete(config_delete_watch_handler))
+        .route("/api/config/global", put(config_put_global_handler))
+        .route("/api/watchers", get(watchers_list_handler))
+        .route("/api/watchers/reload", post(watchers_reload_handler))
+        .route("/api/auth/status", get(auth_status_handler))
+        .route("/api/auth/login", post(auth_login_handler))
+        .route("/api/auth/verify", get(auth_verify_handler))
+        .route("/metrics", get(metrics_prometheus_handler))
+        .route("/api/metrics/chart", get(metrics_chart_handler))
+        .with_state(state)
+}
+
 /// Run the axum web server.
 pub async fn run_server(
     config: AppConfig,
@@ -54,23 +75,7 @@ pub async fn run_server(
         metrics,
     };
 
-    let app = Router::new()
-        .route("/", get(index_handler))
-        .route("/ws", get(ws_handler))
-        .route("/api/events", get(events_handler))
-        .route("/api/config", get(config_get_handler))
-        .route("/api/config/watches", post(config_add_watch_handler))
-        .route("/api/config/watches/{idx}", put(config_put_watch_handler))
-        .route("/api/config/watches/{idx}", delete(config_delete_watch_handler))
-        .route("/api/config/global", put(config_put_global_handler))
-        .route("/api/watchers", get(watchers_list_handler))
-        .route("/api/watchers/reload", post(watchers_reload_handler))
-        .route("/api/auth/status", get(auth_status_handler))
-        .route("/api/auth/login", post(auth_login_handler))
-        .route("/api/auth/verify", get(auth_verify_handler))
-        .route("/metrics", get(metrics_prometheus_handler))
-        .route("/api/metrics/chart", get(metrics_chart_handler))
-        .with_state(state);
+    let app = build_router(state);
 
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
@@ -143,7 +148,8 @@ async fn auth_login_handler(
 
     let provided = body.get("password").and_then(|v| v.as_str()).unwrap_or("");
 
-    if provided == password {
+    // Constant-time comparison to prevent timing attacks
+    if constant_time_eq(provided.as_bytes(), password.as_bytes()) {
         let token = uuid::Uuid::new_v4().to_string();
         state.tokens.write().await.insert(token.clone());
         info!("Auth: login successful");
@@ -155,6 +161,18 @@ async fn auth_login_handler(
         info!("Auth: login failed");
         Err(StatusCode::FORBIDDEN)
     }
+}
+
+/// Constant-time byte comparison to prevent timing attacks.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut result = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        result |= x ^ y;
+    }
+    result == 0
 }
 
 /// GET /api/auth/verify — check if token is still valid.
@@ -281,6 +299,7 @@ async fn handle_ws(mut socket: WebSocket, state: AppState) {
 /// - types: comma-separated event types
 /// - after: ISO 8601 timestamp (inclusive start)
 /// - before: ISO 8601 timestamp (inclusive end)
+/// - target_type: "file" or "dir" to filter by file type
 async fn events_handler(
     headers: HeaderMap,
     Query(params): Query<std::collections::HashMap<String, String>>,
@@ -297,11 +316,16 @@ async fn events_handler(
         .unwrap_or_default();
     let after = params.get("after").map(|s| s.as_str()).filter(|s| !s.is_empty());
     let before = params.get("before").map(|s| s.as_str()).filter(|s| !s.is_empty());
+    let is_dir = params.get("target_type").and_then(|v| match v.to_lowercase().as_str() {
+        "dir" | "directory" => Some(true),
+        "file" => Some(false),
+        _ => None,
+    });
     let offset = (page - 1) * per_page;
 
     let (events, total) = if let Some(ref store) = state.store {
-        let total = store.count_filtered(&event_types, None, search, after, before).await.unwrap_or(0);
-        let evts = store.query(per_page, offset, &event_types, None, search, after, before).await.unwrap_or_default();
+        let total = store.count_filtered(&event_types, None, search, after, before, is_dir).await.unwrap_or(0);
+        let evts = store.query(per_page, offset, &event_types, None, search, after, before, is_dir).await.unwrap_or_default();
         let events: Vec<serde_json::Value> = evts
             .iter()
             .map(|e| {
@@ -327,6 +351,7 @@ async fn events_handler(
             "types": event_types,
             "after": after,
             "before": before,
+            "target_type": params.get("target_type"),
         }
     })))
 }
@@ -391,7 +416,7 @@ async fn config_get_handler(
         "email_smtp_server": config.notifications.email.smtp_server,
         "email_smtp_port": config.notifications.email.smtp_port,
         "email_username": config.notifications.email.username,
-        "email_password": config.notifications.email.password,
+        "email_password": if config.notifications.email.password.is_empty() { "" } else { "••••••••" },
         "email_batch_size": config.notifications.email.batch_size,
         "email_max_per_minute": config.notifications.email.max_per_minute,
         "syslog_enabled": config.notifications.syslog.enabled,
@@ -694,9 +719,7 @@ async fn watchers_reload_handler(
 
             // Update metrics
             let net_change = result.added.len() as i64 - result.removed.len() as i64;
-            if net_change > 0 {
-                state.metrics.active_watchers.add(net_change);
-            } else if net_change < 0 {
+            if net_change != 0 {
                 state.metrics.active_watchers.add(net_change);
             }
 
@@ -773,5 +796,32 @@ mod tests {
 
         let token = extract_token(&headers);
         assert_eq!(token, None);
+    }
+
+    #[test]
+    fn test_constant_time_eq_identical() {
+        assert!(constant_time_eq(b"hello", b"hello"));
+    }
+
+    #[test]
+    fn test_constant_time_eq_different() {
+        assert!(!constant_time_eq(b"hello", b"world"));
+    }
+
+    #[test]
+    fn test_constant_time_eq_different_length() {
+        assert!(!constant_time_eq(b"hello", b"hi"));
+    }
+
+    #[test]
+    fn test_constant_time_eq_empty() {
+        assert!(constant_time_eq(b"", b""));
+    }
+
+    #[test]
+    fn test_constant_time_eq_single_byte_diff() {
+        // Ensure every bit position is checked
+        assert!(!constant_time_eq(b"\x00", b"\x01"));
+        assert!(!constant_time_eq(b"\x00", b"\x80"));
     }
 }

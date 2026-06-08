@@ -72,35 +72,44 @@ impl DirectorySnapshot {
                 None => {
                     // File is new
                     debug!("New file detected: {}", path.display());
-                    events.push(FsEvent::new(
-                        EventType::Created,
-                        path.clone(),
-                        watch_root.to_path_buf(),
-                    ));
+                    events.push(
+                        FsEvent::new(
+                            EventType::Created,
+                            path.clone(),
+                            watch_root.to_path_buf(),
+                        )
+                        .with_is_dir(new_meta.is_dir),
+                    );
                 }
                 Some(old_meta) => {
                     // Check if modified
                     if old_meta.modified != new_meta.modified || old_meta.size != new_meta.size {
                         debug!("Modified file detected: {}", path.display());
-                        events.push(FsEvent::new(
-                            EventType::Modified,
-                            path.clone(),
-                            watch_root.to_path_buf(),
-                        ));
+                        events.push(
+                            FsEvent::new(
+                                EventType::Modified,
+                                path.clone(),
+                                watch_root.to_path_buf(),
+                            )
+                            .with_is_dir(new_meta.is_dir),
+                        );
                     }
                 }
             }
         }
 
         // Find deleted files
-        for path in self.files.keys() {
+        for (path, old_meta) in &self.files {
             if !newer.files.contains_key(path) {
                 debug!("Deleted file detected: {}", path.display());
-                events.push(FsEvent::new(
-                    EventType::Deleted,
-                    path.clone(),
-                    watch_root.to_path_buf(),
-                ));
+                events.push(
+                    FsEvent::new(
+                        EventType::Deleted,
+                        path.clone(),
+                        watch_root.to_path_buf(),
+                    )
+                    .with_is_dir(old_meta.is_dir),
+                );
             }
         }
 

@@ -30,7 +30,7 @@ async fn test_insert_and_query_single() {
 
     store.insert(&event).await.unwrap();
 
-    let events = store.query(100, 0, &[], None, None, None, None).await.unwrap();
+    let events = store.query(100, 0, &[], None, None, None, None, None).await.unwrap();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].event_type, EventType::Created);
     assert_eq!(events[0].path, PathBuf::from("/file.txt"));
@@ -48,7 +48,7 @@ async fn test_insert_batch_and_query() {
 
     store.insert_batch(&events).await.unwrap();
 
-    let result = store.query(100, 0, &[], None, None, None, None).await.unwrap();
+    let result = store.query(100, 0, &[], None, None, None, None, None).await.unwrap();
     assert_eq!(result.len(), 3);
     assert_eq!(store.count().await.unwrap(), 3);
 }
@@ -63,7 +63,7 @@ async fn test_query_order_by_timestamp_desc() {
     store.insert(&old).await.unwrap();
     store.insert(&new).await.unwrap();
 
-    let events = store.query(100, 0, &[], None, None, None, None).await.unwrap();
+    let events = store.query(100, 0, &[], None, None, None, None, None).await.unwrap();
     assert_eq!(events[0].path, PathBuf::from("/new.txt"));
     assert_eq!(events[1].path, PathBuf::from("/old.txt"));
 }
@@ -77,7 +77,7 @@ async fn test_filtered_query_by_type() {
     store.insert(&make_event(EventType::Modified, "/b.txt", "/watch")).await.unwrap();
     store.insert(&make_event(EventType::Created, "/c.txt", "/watch")).await.unwrap();
 
-    let events = store.query(100, 0, &["CREATE".to_string()], None, None, None, None).await.unwrap();
+    let events = store.query(100, 0, &["CREATE".to_string()], None, None, None, None, None).await.unwrap();
     assert_eq!(events.len(), 2);
     assert!(events.iter().all(|e| e.event_type == EventType::Created));
 }
@@ -89,7 +89,7 @@ async fn test_filtered_query_by_watch_root() {
     store.insert(&make_event(EventType::Created, "/b.txt", "/dir2")).await.unwrap();
     store.insert(&make_event(EventType::Created, "/c.txt", "/dir1")).await.unwrap();
 
-    let events = store.query(100, 0, &[], Some("/dir1"), None, None, None).await.unwrap();
+    let events = store.query(100, 0, &[], Some("/dir1"), None, None, None, None).await.unwrap();
     assert_eq!(events.len(), 2);
     assert!(events.iter().all(|e| e.watch_root == PathBuf::from("/dir1")));
 }
@@ -101,7 +101,7 @@ async fn test_filtered_query_by_search() {
     store.insert(&make_event(EventType::Created, "/project/test/main.rs", "/watch")).await.unwrap();
     store.insert(&make_event(EventType::Created, "/project/src/lib.rs", "/watch")).await.unwrap();
 
-    let events = store.query(100, 0, &[], None, Some("src"), None, None).await.unwrap();
+    let events = store.query(100, 0, &[], None, Some("src"), None, None, None).await.unwrap();
     assert_eq!(events.len(), 2);
 }
 
@@ -118,7 +118,7 @@ async fn test_filtered_query_by_date_range() {
     store.insert(&now).await.unwrap();
 
     let after = (Utc::now() - Duration::minutes(10)).to_rfc3339();
-    let events = store.query(100, 0, &[], None, None, Some(&after), None).await.unwrap();
+    let events = store.query(100, 0, &[], None, None, Some(&after), None, None).await.unwrap();
     assert_eq!(events.len(), 2);
 }
 
@@ -136,7 +136,7 @@ async fn test_filtered_query_combined() {
         &["CREATE".to_string()],
         Some("/project"),
         Some("src"),
-        None, None,
+        None, None, None,
     ).await.unwrap();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].path, PathBuf::from("/src/main.rs"));
@@ -151,10 +151,10 @@ async fn test_count_filtered() {
     store.insert(&make_event(EventType::Modified, "/b.txt", "/watch")).await.unwrap();
     store.insert(&make_event(EventType::Created, "/c.txt", "/watch")).await.unwrap();
 
-    let count = store.count_filtered(&["CREATE".to_string()], None, None, None, None).await.unwrap();
+    let count = store.count_filtered(&["CREATE".to_string()], None, None, None, None, None).await.unwrap();
     assert_eq!(count, 2);
 
-    let count = store.count_filtered(&[], None, None, None, None).await.unwrap();
+    let count = store.count_filtered(&[], None, None, None, None, None).await.unwrap();
     assert_eq!(count, 3);
 }
 
@@ -171,19 +171,19 @@ async fn test_pagination() {
     }
 
     // First page
-    let page1 = store.query(10, 0, &[], None, None, None, None).await.unwrap();
+    let page1 = store.query(10, 0, &[], None, None, None, None, None).await.unwrap();
     assert_eq!(page1.len(), 10);
 
     // Second page
-    let page2 = store.query(10, 10, &[], None, None, None, None).await.unwrap();
+    let page2 = store.query(10, 10, &[], None, None, None, None, None).await.unwrap();
     assert_eq!(page2.len(), 10);
 
     // Last page
-    let page5 = store.query(10, 40, &[], None, None, None, None).await.unwrap();
+    let page5 = store.query(10, 40, &[], None, None, None, None, None).await.unwrap();
     assert_eq!(page5.len(), 10);
 
     // Beyond end
-    let empty = store.query(10, 50, &[], None, None, None, None).await.unwrap();
+    let empty = store.query(10, 50, &[], None, None, None, None, None).await.unwrap();
     assert!(empty.is_empty());
 }
 
@@ -206,7 +206,7 @@ async fn test_purge_before() {
     assert_eq!(deleted, 2);
     assert_eq!(store.count().await.unwrap(), 1);
 
-    let remaining = store.query(100, 0, &[], None, None, None, None).await.unwrap();
+    let remaining = store.query(100, 0, &[], None, None, None, None, None).await.unwrap();
     assert_eq!(remaining[0].path, PathBuf::from("/recent.txt"));
 }
 

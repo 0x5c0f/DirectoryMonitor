@@ -4,7 +4,7 @@ use dm_core::config::AppConfig;
 use dm_processor::{EventDeduplicator, EventFilter};
 use dm_storage::EventStore;
 use dm_watcher::{FsWatcher, WatchEvent};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, Mutex, RwLock};
@@ -439,10 +439,8 @@ async fn run_serve(mut config: AppConfig, config_path: PathBuf, bind: &Option<St
 
                             // Update watcher count
                             let net_change = result.added.len() as i64 - result.removed.len() as i64;
-                            if net_change > 0 {
+                            if net_change != 0 {
                                 metrics_clone.active_watchers.add(net_change);
-                            } else if net_change < 0 {
-                                metrics_clone.active_watchers.add(net_change); // negative value
                             }
 
                             info!(
@@ -520,7 +518,7 @@ async fn process_watch_event(
                 dedup.process(event)
             };
 
-            let Some(event) = event else { return };
+            let Some(event) = event else { continue };
 
             // Apply event type filter (from config event_types)
             let filtered = filters
@@ -529,7 +527,7 @@ async fn process_watch_event(
                 .map(|(_, f)| f.matches(&event))
                 .unwrap_or(true); // No filter = allow all
             if !filtered {
-                return;
+                continue;
             }
 
             // Log the event
@@ -600,7 +598,7 @@ async fn process_watch_event(
     }
 }
 
-fn take_snapshot(path: &PathBuf, output: &PathBuf) -> Result<()> {
+fn take_snapshot(path: &Path, output: &Path) -> Result<()> {
     use dm_watcher::snapshot::DirectorySnapshot;
 
     info!("Taking snapshot of {}...", path.display());

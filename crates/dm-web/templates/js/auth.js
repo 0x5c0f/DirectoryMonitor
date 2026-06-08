@@ -122,11 +122,15 @@ if (loginThemeBtn) {
 
 // ── Tabs ─────────────────────────────────────────────
 function activateTab(tabName) {
-  document.querySelectorAll('.nav-tabs button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.nav-tabs button').forEach(b => {
+    b.classList.remove('active');
+    b.setAttribute('aria-selected', 'false');
+  });
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   const targetBtn = document.querySelector('.nav-tabs button[data-tab="' + tabName + '"]');
   if (targetBtn) {
     targetBtn.classList.add('active');
+    targetBtn.setAttribute('aria-selected', 'true');
     $('tab-' + tabName).classList.add('active');
   }
 }

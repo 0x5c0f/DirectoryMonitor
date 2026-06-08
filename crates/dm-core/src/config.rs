@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Root configuration for Directory Monitor.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,7 +34,7 @@ impl Default for AppConfig {
 
 impl AppConfig {
     /// Load configuration from a TOML file.
-    pub fn load(path: &PathBuf) -> Result<Self, crate::error::ConfigError> {
+    pub fn load(path: &Path) -> Result<Self, crate::error::ConfigError> {
         let content = std::fs::read_to_string(path).map_err(|e| crate::error::ConfigError::ReadFailed {
             path: path.display().to_string(),
             source: e,
@@ -43,8 +43,8 @@ impl AppConfig {
     }
 
     /// Save configuration to a TOML file.
-    pub fn save(&self, path: &PathBuf) -> Result<(), crate::error::ConfigError> {
-        let content = toml::to_string_pretty(self).map_err(|e| crate::error::ConfigError::SerializeFailed(e.to_string()))?;
+    pub fn save(&self, path: &Path) -> Result<(), crate::error::ConfigError> {
+        let content = toml::to_string_pretty(self).map_err(crate::error::ConfigError::SerializeFailed)?;
         std::fs::write(path, content).map_err(|e| crate::error::ConfigError::WriteFailed {
             path: path.display().to_string(),
             source: e,

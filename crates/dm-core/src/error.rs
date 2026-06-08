@@ -7,16 +7,51 @@ pub enum DmError {
     Config(#[from] ConfigError),
 
     #[error("Watcher error: {0}")]
-    Watcher(String),
+    Watcher(#[source] WatcherError),
 
     #[error("Storage error: {0}")]
-    Storage(String),
+    Storage(#[source] StorageError),
 
     #[error("Notification error: {0}")]
     Notification(#[from] NotificationError),
 
     #[error("Service error: {0}")]
     Service(String),
+}
+
+/// Watcher-related errors.
+#[derive(Debug, Error)]
+pub enum WatcherError {
+    #[error("Failed to initialize watcher: {0}")]
+    Init(String),
+
+    #[error("Failed to add watch for '{path}': {source}")]
+    AddWatch {
+        path: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[error("Failed to remove watch for '{path}': {source}")]
+    RemoveWatch {
+        path: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+/// Storage-related errors.
+#[derive(Debug, Error)]
+pub enum StorageError {
+    #[error("Database error: {0}")]
+    Database(#[source] Box<dyn std::error::Error + Send + Sync>),
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Serialization error: {0}")]
+    Serialization(String),
 }
 
 /// Configuration-related errors.
@@ -32,7 +67,7 @@ pub enum ConfigError {
     ParseFailed(#[source] toml::de::Error),
 
     #[error("Failed to serialize config: {0}")]
-    SerializeFailed(String),
+    SerializeFailed(#[source] toml::ser::Error),
 
     #[error("Failed to write config file '{path}': {source}")]
     WriteFailed {
@@ -48,14 +83,14 @@ pub enum ConfigError {
 #[derive(Debug, Error)]
 pub enum NotificationError {
     #[error("Email error: {0}")]
-    Email(String),
+    Email(#[source] Box<dyn std::error::Error + Send + Sync>),
 
     #[error("Syslog error: {0}")]
-    Syslog(String),
+    Syslog(#[source] Box<dyn std::error::Error + Send + Sync>),
 
     #[error("Script execution error: {0}")]
-    Script(String),
+    Script(#[source] Box<dyn std::error::Error + Send + Sync>),
 
     #[error("Sound error: {0}")]
-    Sound(String),
+    Sound(#[source] Box<dyn std::error::Error + Send + Sync>),
 }

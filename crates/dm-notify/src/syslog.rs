@@ -6,6 +6,7 @@ use tracing::debug;
 /// Sends syslog messages for filesystem events.
 pub struct SyslogNotifier {
     config: SyslogNotifierConfig,
+    socket: UdpSocket,
 }
 
 #[derive(Debug, Clone)]
@@ -43,6 +44,8 @@ impl SyslogNotifier {
             _ => 1, // user
         };
 
+        let socket = UdpSocket::bind("0.0.0.0:0").expect("Failed to bind UDP socket");
+
         Self {
             config: SyslogNotifierConfig {
                 server: config.server.clone(),
@@ -51,6 +54,7 @@ impl SyslogNotifier {
                 facility,
                 message_format: config.message_format.clone(),
             },
+            socket,
         }
     }
 
@@ -87,8 +91,7 @@ impl SyslogNotifier {
         };
 
         let addr = format!("{}:{}", self.config.server, self.config.port);
-        let socket = UdpSocket::bind("0.0.0.0:0").map_err(|e| format!("Socket bind error: {e}"))?;
-        socket
+        self.socket
             .send_to(syslog_msg.as_bytes(), &addr)
             .map_err(|e| format!("Syslog send error: {e}"))?;
 

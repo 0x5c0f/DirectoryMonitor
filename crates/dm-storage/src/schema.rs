@@ -2,7 +2,7 @@ use rusqlite::Connection;
 use tracing::info;
 
 /// Current schema version.
-pub const SCHEMA_VERSION: i32 = 1;
+pub const SCHEMA_VERSION: i32 = 2;
 
 /// SQL statements to create the initial schema.
 const SCHEMA_SQL: &str = "
@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS events (
     event_type TEXT NOT NULL,
     path TEXT NOT NULL,
     target_path TEXT,
+    is_dir INTEGER,
     user_name TEXT,
     process_name TEXT,
     watch_root TEXT NOT NULL
@@ -41,10 +42,35 @@ pub fn initialize(conn: &Connection) -> Result<(), String> {
         )
         .map_err(|e| format!("Failed to set schema version: {e}"))?;
         info!("Database schema initialized at version {}", SCHEMA_VERSION);
+    } else if current_version < SCHEMA_VERSION {
+        // Run migrations
+        migrate(conn, current_version)?;
     } else {
         info!("Database schema at version {}", current_version);
     }
 
+    Ok(())
+}
+
+/// Run database migrations from the given version to the current version.
+fn migrate(conn: &Connection, from_version: i32) -> Result<(), String> {
+    info!("Migrating database schema from version {} to {}", from_version, SCHEMA_VERSION);
+
+    if from_version < 2 {
+        // v1 → v2: add is_dir column
+        conn.execute("ALTER TABLE events ADD COLUMN is_dir INTEGER", [])
+            .map_err(|e| format!("Failed to add is_dir column: {e}"))?;
+        info!("Migration v1→v2: added is_dir column");
+    }
+
+    // Update schema version
+    conn.execute(
+        "UPDATE schema_version SET version = ?1",
+        [SCHEMA_VERSION],
+    )
+    .map_err(|e| format!("Failed to update schema version: {e}"))?;
+
+    info!("Database schema migrated to version {}", SCHEMA_VERSION);
     Ok(())
 }
 

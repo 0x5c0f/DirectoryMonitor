@@ -5,7 +5,7 @@
 </div>
 
 <!-- ── Modal Container ─────────────────────────────── -->
-<div class="modal-overlay" id="modalOverlay">
+<div class="modal-overlay" id="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
   <div class="modal">
     <div class="modal-title" id="modalTitle"></div>
     <div class="modal-body" id="modalBody"></div>
@@ -43,11 +43,12 @@
       <p>输入访问密码以继续</p>
     </div>
     <div class="login-input-group">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <label for="loginPassword" class="sr-only">访问密码</label>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
         <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
       </svg>
-      <input type="password" id="loginPassword" placeholder="密码" autofocus>
+      <input type="password" id="loginPassword" placeholder="密码" autofocus aria-label="访问密码">
     </div>
     <button id="loginBtn">进入系统</button>
     <div class="login-error" id="loginError"></div>
@@ -65,14 +66,14 @@
       </div>
       <span class="logo-text">Directory Monitor</span>
     </div>
-    <div class="nav-tabs">
-      <button class="active" data-tab="dashboard">仪表盘</button>
-      <button data-tab="events">事件日志</button>
-      <button data-tab="settings">监控配置</button>
-    </div>
+    <nav class="nav-tabs" role="tablist" aria-label="主导航">
+      <button class="active" data-tab="dashboard" role="tab" aria-selected="true" aria-controls="tab-dashboard">仪表盘</button>
+      <button data-tab="events" role="tab" aria-selected="false" aria-controls="tab-events">事件日志</button>
+      <button data-tab="settings" role="tab" aria-selected="false" aria-controls="tab-settings">监控配置</button>
+    </nav>
     <div class="header-right">
-      <div class="status-badge">
-        <span class="dot" id="dot"></span>
+      <div class="status-badge" role="status" aria-live="polite" aria-label="连接状态">
+        <span class="dot" id="dot" aria-hidden="true"></span>
         <span id="statusText">离线</span>
       </div>
       <span class="stats" id="stats"></span>
@@ -100,7 +101,7 @@
   </header>
 
   <!-- Dashboard Tab -->
-  <div class="tab-content active" id="tab-dashboard">
+  <div class="tab-content active" id="tab-dashboard" role="tabpanel" aria-label="仪表盘">
     <div class="dashboard">
       <!-- System Status Cards -->
       <div class="status-cards">
@@ -219,17 +220,18 @@
   </div>
 
   <!-- Events Tab -->
-  <div class="tab-content" id="tab-events">
+  <div class="tab-content" id="tab-events" role="tabpanel" aria-label="事件日志">
     <div class="toolbar">
       <div class="search-wrapper">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="11" cy="11" r="8"/>
           <line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
-        <input type="text" id="search" placeholder="搜索路径...">
+        <label for="search" class="sr-only">搜索路径</label>
+        <input type="text" id="search" placeholder="搜索路径..." aria-label="搜索路径">
       </div>
       <div class="checkbox-dropdown" id="typeFilterDropdown">
-        <button class="checkbox-dropdown-btn" id="typeFilterBtn" aria-haspopup="listbox" aria-expanded="false">
+        <button class="checkbox-dropdown-btn" id="typeFilterBtn" aria-haspopup="listbox" aria-expanded="false" aria-controls="typeCheckboxes">
           <span id="typeFilterLabel">所有类型</span>
           <svg class="arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
         </button>
@@ -241,6 +243,19 @@
           <div id="typeCheckboxes"></div>
         </div>
       </div>
+      <div class="checkbox-dropdown" id="targetTypeDropdown">
+        <button class="checkbox-dropdown-btn" id="targetTypeBtn" aria-haspopup="listbox" aria-expanded="false" aria-controls="targetTypeOptions">
+          <span id="targetTypeLabel">所有目标</span>
+          <svg class="arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="checkbox-dropdown-panel" role="listbox">
+          <div class="target-type-options" id="targetTypeOptions">
+            <button class="target-type-option active" data-value="" onclick="setTargetType('')">所有目标</button>
+            <button class="target-type-option" data-value="file" onclick="setTargetType('file')">FILE</button>
+            <button class="target-type-option" data-value="dir" onclick="setTargetType('dir')">DIR</button>
+          </div>
+        </div>
+      </div>
       <div class="time-filter">
         <div class="time-presets">
           <button class="time-preset active" data-range="all" onclick="setTimeRange('all')">全部</button>
@@ -250,15 +265,23 @@
           <button class="time-preset" data-range="custom" onclick="toggleCustomTime()">自定义</button>
         </div>
         <div class="custom-time" id="customTime" style="display:none">
-          <input type="datetime-local" id="timeAfter" placeholder="开始时间">
+          <label for="timeAfter" class="sr-only">开始时间</label>
+          <input type="datetime-local" id="timeAfter" placeholder="开始时间" aria-label="开始时间">
           <span class="time-sep">至</span>
-          <input type="datetime-local" id="timeBefore" placeholder="结束时间">
+          <label for="timeBefore" class="sr-only">结束时间</label>
+          <input type="datetime-local" id="timeBefore" placeholder="结束时间" aria-label="结束时间">
           <button class="btn-apply" onclick="applyCustomTime()">应用</button>
         </div>
       </div>
       <span class="count" id="count">0 条事件</span>
     </div>
-    <div class="event-list" id="list">
+    <div class="event-header">
+      <span class="event-col-time">时间</span>
+      <span class="event-col-type">事件</span>
+      <span class="event-col-target-type">类型</span>
+      <span class="event-col-path">目标</span>
+    </div>
+    <div class="event-list" id="list" role="log" aria-live="polite" aria-label="事件列表">
       <div class="empty-msg">
         <div class="empty-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-muted)">
@@ -278,7 +301,7 @@
   </div>
 
   <!-- Settings Tab -->
-  <div class="tab-content" id="tab-settings">
+  <div class="tab-content" id="tab-settings" role="tabpanel" aria-label="监控配置">
     <div class="settings-panel" id="settingsPanel">
       <div class="empty-msg">加载中...</div>
     </div>

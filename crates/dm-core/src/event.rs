@@ -102,6 +102,8 @@ pub struct FsEvent {
     pub path: PathBuf,
     /// For rename events, the destination path.
     pub target_path: Option<PathBuf>,
+    /// Whether the path is a directory (None if unknown).
+    pub is_dir: Option<bool>,
     /// The user who made the change (PRO feature, None if unavailable).
     pub user: Option<String>,
     /// The process that made the change (PRO feature, None if unavailable).
@@ -122,22 +124,32 @@ impl FsEvent {
             event_type,
             path,
             target_path: None,
+            is_dir: None,
             user: None,
             process: None,
             watch_root,
         }
     }
 
+    #[must_use]
     pub fn with_target(mut self, target: PathBuf) -> Self {
         self.target_path = Some(target);
         self
     }
 
+    #[must_use]
+    pub fn with_is_dir(mut self, is_dir: bool) -> Self {
+        self.is_dir = Some(is_dir);
+        self
+    }
+
+    #[must_use]
     pub fn with_user(mut self, user: String) -> Self {
         self.user = Some(user);
         self
     }
 
+    #[must_use]
     pub fn with_process(mut self, process: String) -> Self {
         self.process = Some(process);
         self
@@ -154,8 +166,13 @@ impl FsEvent {
     }
 
     /// Format event using macro-style placeholders.
-    /// Supported: %file%, %directory%, %event%, %timestamp%, %path%, %target%, %user%, %process%
+    /// Supported: %file%, %directory%, %event%, %timestamp%, %path%, %target%, %type%, %user%, %process%
     pub fn format_with(&self, template: &str) -> String {
+        let type_str = match self.is_dir {
+            Some(true) => "DIR",
+            Some(false) => "FILE",
+            None => "",
+        };
         let mut result = template.to_string();
         result = result.replace("%file%", self.filename().unwrap_or(""));
         result = result.replace("%directory%", self.directory().unwrap_or(""));
@@ -166,6 +183,7 @@ impl FsEvent {
             "%target%",
             self.target_path.as_ref().and_then(|p| p.to_str()).unwrap_or(""),
         );
+        result = result.replace("%type%", type_str);
         result = result.replace("%user%", self.user.as_deref().unwrap_or("unknown"));
         result = result.replace("%process%", self.process.as_deref().unwrap_or("unknown"));
         result
@@ -284,13 +302,14 @@ mod tests {
             event_type: EventType::Created,
             path: PathBuf::from("/home/user/file.txt"),
             target_path: Some(PathBuf::from("/home/user/new.txt")),
+            is_dir: Some(false),
             user: Some("alice".to_string()),
             process: Some("vim".to_string()),
             watch_root: PathBuf::from("/home/user"),
         };
 
-        let result = event.format_with("%event% %file% in %directory% by %user% via %process%");
-        assert_eq!(result, "CREATE file.txt in /home/user by alice via vim");
+        let result = event.format_with("%event% %type% %file% in %directory% by %user% via %process%");
+        assert_eq!(result, "CREATE FILE file.txt in /home/user by alice via vim");
     }
 
     #[test]
@@ -301,6 +320,7 @@ mod tests {
             event_type: EventType::Renamed,
             path: PathBuf::from("/old/path.txt"),
             target_path: Some(PathBuf::from("/new/path.txt")),
+            is_dir: None,
             user: None,
             process: None,
             watch_root: PathBuf::from("/"),
@@ -354,6 +374,15 @@ mod tests {
     }
 
     #[test]
+    fn test_fsevent_with_is_dir() {
+        let event = make_event(EventType::Created, "/dir").with_is_dir(true);
+        assert_eq!(event.is_dir, Some(true));
+
+        let event = make_event(EventType::Created, "/file.txt").with_is_dir(false);
+        assert_eq!(event.is_dir, Some(false));
+    }
+
+    #[test]
     fn test_fsevent_with_user() {
         let event = make_event(EventType::Created, "/file.txt")
             .with_user("bob".to_string());
@@ -365,5 +394,28 @@ mod tests {
         let event = make_event(EventType::Created, "/file.txt")
             .with_process("git".to_string());
         assert_eq!(event.process, Some("git".to_string()));
+    }
+
+    // === is_dir type display ===
+
+    #[test]
+    fn test_fsevent_type_placeholder_dir() {
+        let event = make_event(EventType::Created, "/mydir").with_is_dir(true);
+        let result = event.format_with("%event% %type% %file%");
+        assert_eq!(result, "CREATE DIR mydir");
+    }
+
+    #[test]
+    fn test_fsevent_type_placeholder_file() {
+        let event = make_event(EventType::Created, "/file.txt").with_is_dir(false);
+        let result = event.format_with("%event% %type% %file%");
+        assert_eq!(result, "CREATE FILE file.txt");
+    }
+
+    #[test]
+    fn test_fsevent_type_placeholder_unknown() {
+        let event = make_event(EventType::Modified, "/path");
+        let result = event.format_with("%event% %type% %file%");
+        assert_eq!(result, "MODIFY  path");
     }
 }

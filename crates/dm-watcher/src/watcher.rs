@@ -1,5 +1,5 @@
 use dm_core::event::{EventType, FsEvent};
-use notify::event::{AccessKind, AccessMode, ModifyKind, RenameMode};
+use notify::event::{AccessKind, AccessMode, CreateKind, ModifyKind, RemoveKind, RenameMode};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher, Config};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -143,18 +143,33 @@ fn debounce_loop(
 ///   ACCESS, MODIFY, ATTRIB, CLOSE_WRITE, CLOSE_NOWRITE, OPEN,
 ///   MOVED_TO, MOVED_FROM, CREATE, DELETE, RENAME
 fn convert_event(event: &Event) -> Option<FsEvent> {
-    let (event_type, path, target_path) = match event.kind {
-        // CREATE → Created
-        EventKind::Create(_) => (EventType::Created, event.paths.first()?.clone(), None),
+    let (event_type, path, target_path, is_dir) = match event.kind {
+        // CREATE → Created (with file type from CreateKind)
+        EventKind::Create(CreateKind::File) => {
+            (EventType::Created, event.paths.first()?.clone(), None, Some(false))
+        }
+        EventKind::Create(CreateKind::Folder) => {
+            (EventType::Created, event.paths.first()?.clone(), None, Some(true))
+        }
+        EventKind::Create(_) => {
+            // CreateKind::Any or Other — try to stat the path
+            let path = event.paths.first()?.clone();
+            let is_dir = std::fs::metadata(&path).ok().map(|m| m.is_dir());
+            (EventType::Created, path, None, is_dir)
+        }
 
         // MODIFY → depends on sub-type
         EventKind::Modify(ModifyKind::Data(_)) => {
             // Content changed (size, content)
-            (EventType::Modified, event.paths.first()?.clone(), None)
+            let path = event.paths.first()?.clone();
+            let is_dir = std::fs::metadata(&path).ok().map(|m| m.is_dir());
+            (EventType::Modified, path, None, is_dir)
         }
         EventKind::Modify(ModifyKind::Metadata(_)) => {
             // Metadata changed (permissions, timestamps, owner)
-            (EventType::Attrib, event.paths.first()?.clone(), None)
+            let path = event.paths.first()?.clone();
+            let is_dir = std::fs::metadata(&path).ok().map(|m| m.is_dir());
+            (EventType::Attrib, path, None, is_dir)
         }
         // Rename events: prefer MOVED_FROM + MOVED_TO pair (inotifywait style).
         // Skip RenameMode::Both to avoid duplicate rename reporting.
@@ -164,45 +179,68 @@ fn convert_event(event: &Event) -> Option<FsEvent> {
         }
         EventKind::Modify(ModifyKind::Name(RenameMode::From)) => {
             // MOVED_FROM: file moved out of watched directory.
-            (EventType::MovedFrom, event.paths.first()?.clone(), None)
+            (EventType::MovedFrom, event.paths.first()?.clone(), None, None)
         }
         EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
             // MOVED_TO: file moved into watched directory.
-            (EventType::MovedTo, event.paths.first()?.clone(), None)
+            (EventType::MovedTo, event.paths.first()?.clone(), None, None)
         }
         EventKind::Modify(_) => {
             // Catch-all for other modify events
-            (EventType::Modified, event.paths.first()?.clone(), None)
+            let path = event.paths.first()?.clone();
+            let is_dir = std::fs::metadata(&path).ok().map(|m| m.is_dir());
+            (EventType::Modified, path, None, is_dir)
         }
 
-        // DELETE → Deleted
-        EventKind::Remove(_) => (EventType::Deleted, event.paths.first()?.clone(), None),
+        // DELETE → Deleted (with file type from RemoveKind)
+        EventKind::Remove(RemoveKind::File) => {
+            (EventType::Deleted, event.paths.first()?.clone(), None, Some(false))
+        }
+        EventKind::Remove(RemoveKind::Folder) => {
+            (EventType::Deleted, event.paths.first()?.clone(), None, Some(true))
+        }
+        EventKind::Remove(_) => {
+            // RemoveKind::Any or Other — unknown type
+            (EventType::Deleted, event.paths.first()?.clone(), None, None)
+        }
 
         // ACCESS → depends on sub-type (this is where CLOSE_WRITE lives!)
         EventKind::Access(AccessKind::Read) => {
             // File contents were read
-            (EventType::Accessed, event.paths.first()?.clone(), None)
+            let path = event.paths.first()?.clone();
+            let is_dir = std::fs::metadata(&path).ok().map(|m| m.is_dir());
+            (EventType::Accessed, path, None, is_dir)
         }
         EventKind::Access(AccessKind::Open(_)) => {
             // File was opened
-            (EventType::Opened, event.paths.first()?.clone(), None)
+            let path = event.paths.first()?.clone();
+            let is_dir = std::fs::metadata(&path).ok().map(|m| m.is_dir());
+            (EventType::Opened, path, None, is_dir)
         }
         EventKind::Access(AccessKind::Close(AccessMode::Write)) => {
             // CLOSE_WRITE: file was written to and then closed.
             // This is the most reliable signal that a write is complete.
-            (EventType::CloseWrite, event.paths.first()?.clone(), None)
+            let path = event.paths.first()?.clone();
+            let is_dir = std::fs::metadata(&path).ok().map(|m| m.is_dir());
+            (EventType::CloseWrite, path, None, is_dir)
         }
         EventKind::Access(AccessKind::Close(AccessMode::Read)) => {
             // CLOSE_NOWRITE: read-only file was closed
-            (EventType::CloseNoWrite, event.paths.first()?.clone(), None)
+            let path = event.paths.first()?.clone();
+            let is_dir = std::fs::metadata(&path).ok().map(|m| m.is_dir());
+            (EventType::CloseNoWrite, path, None, is_dir)
         }
         EventKind::Access(AccessKind::Close(_)) => {
             // Close with unknown mode
-            (EventType::CloseNoWrite, event.paths.first()?.clone(), None)
+            let path = event.paths.first()?.clone();
+            let is_dir = std::fs::metadata(&path).ok().map(|m| m.is_dir());
+            (EventType::CloseNoWrite, path, None, is_dir)
         }
         EventKind::Access(_) => {
             // Catch-all for other access events
-            (EventType::Accessed, event.paths.first()?.clone(), None)
+            let path = event.paths.first()?.clone();
+            let is_dir = std::fs::metadata(&path).ok().map(|m| m.is_dir());
+            (EventType::Accessed, path, None, is_dir)
         }
 
         _ => {
@@ -220,6 +258,9 @@ fn convert_event(event: &Event) -> Option<FsEvent> {
     let mut fs_event = FsEvent::new(event_type, path, watch_root);
     if let Some(target) = target_path {
         fs_event = fs_event.with_target(target);
+    }
+    if let Some(dir) = is_dir {
+        fs_event = fs_event.with_is_dir(dir);
     }
 
     Some(fs_event)

@@ -8,15 +8,19 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use tracing::{error, info};
 
+/// Rate limiter state for email sending.
+struct RateLimiter {
+    last_send: Instant,
+    sent_this_minute: u32,
+}
+
 /// Sends email notifications for filesystem events.
 pub struct EmailNotifier {
     config: EmailConfig,
     /// Pending events for batch mode.
     pending: Arc<Mutex<Vec<FsEvent>>>,
-    /// Last send time for throttling.
-    last_send: Arc<Mutex<Instant>>,
-    /// Emails sent in the current minute (for rate limiting).
-    sent_this_minute: Arc<Mutex<u32>>,
+    /// Rate limiter state (last_send + sent_this_minute under single lock).
+    rate_limiter: Arc<Mutex<RateLimiter>>,
 }
 
 impl EmailNotifier {
@@ -24,8 +28,10 @@ impl EmailNotifier {
         Self {
             config,
             pending: Arc::new(Mutex::new(Vec::new())),
-            last_send: Arc::new(Mutex::new(Instant::now())),
-            sent_this_minute: Arc::new(Mutex::new(0)),
+            rate_limiter: Arc::new(Mutex::new(RateLimiter {
+                last_send: Instant::now(),
+                sent_this_minute: 0,
+            })),
         }
     }
 
@@ -36,10 +42,11 @@ impl EmailNotifier {
         }
 
         if self.config.batch_size > 0 {
-            self.pending.lock().await.push(event.clone());
-            let pending = self.pending.lock().await;
-            if pending.len() >= self.config.batch_size {
-                drop(pending);
+            let mut pending = self.pending.lock().await;
+            pending.push(event.clone());
+            let should_flush = pending.len() >= self.config.batch_size;
+            drop(pending);
+            if should_flush {
                 self.flush(recipients).await?;
             }
         } else {
@@ -132,20 +139,20 @@ impl EmailNotifier {
             }
         }
 
-        *self.sent_this_minute.lock().await += 1;
+        let mut limiter = self.rate_limiter.lock().await;
+        limiter.sent_this_minute += 1;
         Ok(())
     }
 
     async fn check_rate_limit(&self) -> Result<(), String> {
-        let mut sent = self.sent_this_minute.lock().await;
-        let last = *self.last_send.lock().await;
+        let mut limiter = self.rate_limiter.lock().await;
 
-        if last.elapsed() >= Duration::from_secs(60) {
-            *sent = 0;
-            *self.last_send.lock().await = Instant::now();
+        if limiter.last_send.elapsed() >= Duration::from_secs(60) {
+            limiter.sent_this_minute = 0;
+            limiter.last_send = Instant::now();
         }
 
-        if *sent >= self.config.max_per_minute {
+        if limiter.sent_this_minute >= self.config.max_per_minute {
             return Err("Email rate limit exceeded".to_string());
         }
 
