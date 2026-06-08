@@ -51,7 +51,7 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
-          DIST_NAME="directory-monitor-${VERSION}-${matrix.platform}-${matrix.arch}"
+          DIST_NAME="directory-monitor-${VERSION}-${{ matrix.platform }}-${{ matrix.arch }}"
           mkdir -p "${DIST_NAME}"
           cp target/${{ matrix.target }}/release/directory-monitor${{ matrix.ext }} "${DIST_NAME}/"
           cp config.example.toml "${DIST_NAME}/config.toml"
@@ -64,7 +64,7 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
-          DIST_NAME="directory-monitor-${VERSION}-${matrix.platform}-${matrix.arch}"
+          DIST_NAME="directory-monitor-${VERSION}-${{ matrix.platform }}-${{ matrix.arch }}"
           mkdir -p "${DIST_NAME}"
           cp target/${{ matrix.target }}/release/directory-monitor${{ matrix.ext }} "${DIST_NAME}/"
           cp config.example.toml "${DIST_NAME}/config.toml"
