@@ -49,26 +49,22 @@ jobs:
       - name: Package (tarball)
         if: matrix.platform != 'windows'
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
-          DIST_NAME="directory-monitor-${VERSION}-${{ matrix.platform }}-${{ matrix.arch }}"
+          DIST_NAME="directory-monitor-${{ matrix.platform }}-${{ matrix.arch }}"
           mkdir -p "${DIST_NAME}"
           cp target/${{ matrix.target }}/release/directory-monitor${{ matrix.ext }} "${DIST_NAME}/"
           cp config.example.toml "${DIST_NAME}/config.toml"
-          cp README.md "${DIST_NAME}/"
+          cp DIST_README.md "${DIST_NAME}/README.md"
           tar -czf "${DIST_NAME}.tar.gz" "${DIST_NAME}"
 
       - name: Package (zip)
         if: matrix.platform == 'windows'
         shell: bash
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
-          DIST_NAME="directory-monitor-${VERSION}-${{ matrix.platform }}-${{ matrix.arch }}"
+          DIST_NAME="directory-monitor-${{ matrix.platform }}-${{ matrix.arch }}"
           mkdir -p "${DIST_NAME}"
           cp target/${{ matrix.target }}/release/directory-monitor${{ matrix.ext }} "${DIST_NAME}/"
           cp config.example.toml "${DIST_NAME}/config.toml"
-          cp README.md "${DIST_NAME}/"
+          cp DIST_README.md "${DIST_NAME}/README.md"
           7z a "${DIST_NAME}.zip" "${DIST_NAME}"
 
       - name: Upload artifact
