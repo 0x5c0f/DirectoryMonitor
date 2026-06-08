@@ -409,7 +409,7 @@ header {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 6px;
   padding: 10px 24px;
   background: var(--bg-base);
   border-bottom: 1px solid var(--border);
@@ -456,7 +456,16 @@ header {
 /* ── Checkbox Dropdown ────────────────────────────── */
 .checkbox-dropdown {
   position: relative;
-  min-width: 160px;
+  min-width: 140px;
+}
+
+.search-wrapper + .checkbox-dropdown {
+  margin-left: 4px;
+}
+
+.checkbox-dropdown + .checkbox-dropdown,
+.checkbox-dropdown + .time-filter {
+  margin-left: -3px;
 }
 
 .checkbox-dropdown-btn {
@@ -1358,6 +1367,7 @@ header {
 .custom-time {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -1745,7 +1755,7 @@ header {
 
   .toolbar {
     padding: 8px 12px;
-    gap: 8px;
+    gap: 6px;
   }
   .search-wrapper { max-width: 100%; }
 
@@ -1777,7 +1787,7 @@ header {
   }
 
   .time-preset { padding: 6px 8px; font-size: 10px; }
-  .custom-time input { width: 130px; font-size: 10px; }
+  .custom-time input { width: 120px; font-size: 10px; }
 
   .pagination { gap: 4px; padding: 10px 12px; }
   .pagination button { padding: 4px 8px; font-size: 11px; }
@@ -2006,6 +2016,7 @@ header {
   }
   .checkbox-dropdown { min-width: 120px; }
   .checkbox-dropdown-btn { padding: 6px 8px; font-size: 11px; }
+  .custom-time input { width: 100px; }
 
   .event-item { padding: 5px 8px; gap: 6px; font-size: 11px; }
   .event-header { padding: 6px 8px; gap: 6px; font-size: 10px; }
@@ -2045,6 +2056,8 @@ header {
   .checkbox-dropdown { min-width: 100%; }
   .time-filter { width: 100%; }
   .time-presets { width: 100%; justify-content: center; }
+  .custom-time { width: 100%; }
+  .custom-time input { flex: 1; min-width: 0; }
   .count { margin-left: 0; text-align: center; }
 }
 

@@ -379,7 +379,7 @@ dependencies = [
 
 [[package]]
 name = "dm-cli"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -400,7 +400,7 @@ dependencies = [
 
 [[package]]
 name = "dm-core"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "chrono",
  "serde",
@@ -414,7 +414,7 @@ dependencies = [
 
 [[package]]
 name = "dm-metrics"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "chrono",
  "parking_lot",
@@ -426,7 +426,7 @@ dependencies = [
 
 [[package]]
 name = "dm-notify"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "chrono",
  "dm-core",
@@ -438,7 +438,7 @@ dependencies = [
 
 [[package]]
 name = "dm-processor"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "chrono",
  "dm-core",
@@ -449,7 +449,7 @@ dependencies = [
 
 [[package]]
 name = "dm-storage"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "chrono",
  "dm-core",
@@ -463,7 +463,7 @@ dependencies = [
 
 [[package]]
 name = "dm-watcher"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "chrono",
  "dm-core",
@@ -475,7 +475,7 @@ dependencies = [
 
 [[package]]
 name = "dm-web"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "axum",
  "dm-core",
