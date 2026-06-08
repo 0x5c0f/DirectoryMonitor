@@ -25,3 +25,6 @@ clap = { workspace = true }
 chrono = { workspace = true }
 anyhow = { workspace = true }
 serde_json = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.7"
