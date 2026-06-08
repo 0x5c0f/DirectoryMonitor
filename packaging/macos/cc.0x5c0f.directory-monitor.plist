@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>cc.0x5c0f.directory-monitor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/directory-monitor</string>
+        <string>-c</string>
+        <string>/etc/directory-monitor/config.toml</string>
+        <string>run</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/var/log/directory-monitor.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/var/log/directory-monitor.error.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>/var/lib/directory-monitor</string>
+</dict>
+</plist>

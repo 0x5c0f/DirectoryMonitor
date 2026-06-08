@@ -62,6 +62,12 @@ enum Commands {
         #[arg(short, long)]
         output: PathBuf,
     },
+    /// Install as a system service (Windows only).
+    #[cfg(windows)]
+    InstallService,
+    /// Uninstall the system service (Windows only).
+    #[cfg(windows)]
+    UninstallService,
 }
 
 #[tokio::main]
@@ -92,6 +98,14 @@ async fn main() -> Result<()> {
         }
         Commands::Snapshot { path, output } => {
             take_snapshot(&path, &output)?;
+        }
+        #[cfg(windows)]
+        Commands::InstallService => {
+            install_windows_service(&cli.config)?;
+        }
+        #[cfg(windows)]
+        Commands::UninstallService => {
+            uninstall_windows_service()?;
         }
     }
 
@@ -638,5 +652,61 @@ fn take_snapshot(path: &Path, output: &Path) -> Result<()> {
         snapshot.files.len(),
         output.display()
     );
+    Ok(())
+}
+
+/// Install Directory Monitor as a Windows service.
+#[cfg(windows)]
+fn install_windows_service(config_path: &Path) -> Result<()> {
+    use std::process::Command;
+
+    let exe_path = std::env::current_exe()
+        .context("Failed to get current executable path")?;
+
+    let config_abs = config_path
+        .canonicalize()
+        .unwrap_or_else(|_| config_path.to_path_buf());
+
+    let bin_path = format!("\"{}\" -c \"{}\" run", exe_path.display(), config_abs.display());
+
+    let output = Command::new("sc.exe")
+        .args(["create", "DirectoryMonitor", "binPath=", &bin_path, "start=", "auto", "DisplayName=", "Directory Monitor"])
+        .output()
+        .context("Failed to run sc.exe")?;
+
+    if output.status.success() {
+        info!("Service 'DirectoryMonitor' installed successfully.");
+        info!("  Start with: sc start DirectoryMonitor");
+        info!("  Stop with:  sc stop DirectoryMonitor");
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to install service: {}", stderr);
+    }
+
+    Ok(())
+}
+
+/// Uninstall the Directory Monitor Windows service.
+#[cfg(windows)]
+fn uninstall_windows_service() -> Result<()> {
+    use std::process::Command;
+
+    // Stop the service first
+    let _ = Command::new("sc.exe")
+        .args(["stop", "DirectoryMonitor"])
+        .output();
+
+    let output = Command::new("sc.exe")
+        .args(["delete", "DirectoryMonitor"])
+        .output()
+        .context("Failed to run sc.exe")?;
+
+    if output.status.success() {
+        info!("Service 'DirectoryMonitor' removed successfully.");
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to remove service: {}", stderr);
+    }
+
     Ok(())
 }

@@ -1,0 +1,24 @@
+[Unit]
+Description=Directory Monitor - Filesystem monitoring service
+Documentation=https://github.com/0x5c0f/DirectoryMonitor
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/directory-monitor -c /etc/directory-monitor/config.toml run
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=directory-monitor
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/directory-monitor
+ConfigurationDirectory=directory-monitor
+StateDirectory=directory-monitor
+
+[Install]
+WantedBy=multi-user.target

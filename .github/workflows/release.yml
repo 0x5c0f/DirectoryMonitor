@@ -53,7 +53,8 @@ jobs:
           mkdir -p "${DIST_NAME}"
           cp target/${{ matrix.target }}/release/directory-monitor${{ matrix.ext }} "${DIST_NAME}/"
           cp config.example.toml "${DIST_NAME}/config.toml"
-          cp DIST_README.md "${DIST_NAME}/README.md"
+          cp packaging/README.md "${DIST_NAME}/README.md"
+          cp -r packaging/${{ matrix.platform }}/* "${DIST_NAME}/"
           tar -czf "${DIST_NAME}.tar.gz" "${DIST_NAME}"
 
       - name: Package (zip)
@@ -64,7 +65,7 @@ jobs:
           mkdir -p "${DIST_NAME}"
           cp target/${{ matrix.target }}/release/directory-monitor${{ matrix.ext }} "${DIST_NAME}/"
           cp config.example.toml "${DIST_NAME}/config.toml"
-          cp DIST_README.md "${DIST_NAME}/README.md"
+          cp packaging/README.md "${DIST_NAME}/README.md"
           7z a "${DIST_NAME}.zip" "${DIST_NAME}"
 
       - name: Upload artifact
