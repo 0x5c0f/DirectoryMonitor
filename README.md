@@ -198,11 +198,17 @@ crates/
 ├── dm-core/          Core types: events, config, errors
 ├── dm-watcher/       Filesystem monitoring engine (notify wrapper + debounce)
 ├── dm-processor/     Event filtering, deduplication, batch processing
-├── dm-storage/       SQLite event persistence (WAL mode)
+├── dm-storage/       SQLite event persistence (WAL mode, dedicated DB worker)
+│   ├── worker.rs     — Background thread for SQLite operations
+│   └── query.rs      — EventQuery parameter struct
 ├── dm-notify/        Notification system (email, syslog, scripts)
 ├── dm-metrics/       Metrics collection and Prometheus export
 ├── dm-web/           Web dashboard (Axum + WebSocket + HTML/JS/CSS)
+│   ├── auth.rs       — Authentication handlers
+│   └── routes/       — API route handlers (events, config, watchers, metrics)
 └── dm-cli/           CLI entry point
+    ├── runner.rs     — Run modes (monitor, serve, snapshot)
+    └── pipeline.rs   — Event processing pipeline
 ```
 
 ## Make Commands
@@ -211,7 +217,9 @@ crates/
 make              # Build release (default)
 make build        # Build debug
 make test         # Run tests
-make lint         # Run clippy
+make fmt-check    # Check rustfmt formatting
+make lint         # Run clippy (workspace, all targets)
+make check        # Run all quality checks (fmt + lint + test)
 make clean        # Clean build artifacts
 make dist         # Create distribution tarball
 make install      # Install to ~/.local/bin
@@ -259,7 +267,7 @@ make help         # Show all commands
 
 ## Requirements
 
-- Rust 1.75+
+- Rust 1.80+
 - Linux, macOS, or Windows
 
 ## License

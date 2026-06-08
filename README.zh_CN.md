@@ -198,11 +198,17 @@ crates/
 ├── dm-core/          核心类型：事件、配置、错误定义
 ├── dm-watcher/       文件系统监控引擎（notify 封装 + 防抖）
 ├── dm-processor/     事件过滤、去重、批量处理
-├── dm-storage/       SQLite 事件持久化（WAL 模式）
+├── dm-storage/       SQLite 事件持久化（WAL 模式，专用 DB 工作线程）
+│   ├── worker.rs     — SQLite 操作的后台线程
+│   └── query.rs      — EventQuery 查询参数结构体
 ├── dm-notify/        通知系统（邮件、Syslog、脚本）
 ├── dm-metrics/       指标收集与 Prometheus 导出
 ├── dm-web/           Web 仪表盘（Axum + WebSocket + HTML/JS/CSS）
+│   ├── auth.rs       — 身份认证处理器
+│   └── routes/       — API 路由处理器（events, config, watchers, metrics）
 └── dm-cli/           CLI 入口
+    ├── runner.rs     — 运行模式（monitor, serve, snapshot）
+    └── pipeline.rs   — 事件处理流水线
 ```
 
 ## Make 命令
@@ -211,7 +217,9 @@ crates/
 make              # 构建 release 版本（默认）
 make build        # 构建 debug 版本
 make test         # 运行测试
-make lint         # 代码检查（clippy）
+make fmt-check    # 检查 rustfmt 格式
+make lint         # 代码检查（clippy，workspace 全目标）
+make check        # 运行所有质量检查（fmt + lint + test）
 make clean        # 清理构建产物
 make dist         # 打包分发 tarball
 make install      # 安装到 ~/.local/bin
@@ -259,7 +267,7 @@ make help         # 查看所有命令
 
 ## 环境要求
 
-- Rust 1.75+
+- Rust 1.80+
 - Linux、macOS 或 Windows
 
 ## 许可证
