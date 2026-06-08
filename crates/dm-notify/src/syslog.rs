@@ -19,7 +19,7 @@ struct SyslogNotifierConfig {
 }
 
 impl SyslogNotifier {
-    pub fn new(config: &SyslogConfig) -> Self {
+    pub fn new(config: &SyslogConfig) -> Result<Self, String> {
         let facility = match config.facility.to_lowercase().as_str() {
             "kern" => 0,
             "user" => 1,
@@ -44,9 +44,10 @@ impl SyslogNotifier {
             _ => 1, // user
         };
 
-        let socket = UdpSocket::bind("0.0.0.0:0").expect("Failed to bind UDP socket");
+        let socket =
+            UdpSocket::bind("0.0.0.0:0").map_err(|e| format!("Failed to bind UDP socket: {e}"))?;
 
-        Self {
+        Ok(Self {
             config: SyslogNotifierConfig {
                 server: config.server.clone(),
                 port: config.port,
@@ -55,7 +56,7 @@ impl SyslogNotifier {
                 message_format: config.message_format.clone(),
             },
             socket,
-        }
+        })
     }
 
     /// Send a syslog message for an event.
@@ -97,5 +98,28 @@ impl SyslogNotifier {
 
         debug!("Syslog sent: {}", message);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dm_core::config::SyslogConfig;
+
+    fn config() -> SyslogConfig {
+        SyslogConfig {
+            enabled: true,
+            server: "127.0.0.1".to_string(),
+            port: 514,
+            format: "rfc5424".to_string(),
+            facility: "unknown".to_string(),
+            message_format: None,
+        }
+    }
+
+    #[test]
+    fn new_returns_result() {
+        let notifier = SyslogNotifier::new(&config());
+        assert!(notifier.is_ok());
     }
 }

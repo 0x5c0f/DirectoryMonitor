@@ -3,14 +3,14 @@ use std::ffi::OsString;
 use std::sync::mpsc;
 use windows_service::{
     service::{
-        ServiceControl, ServiceControlAccept, ServiceExitCode,
-        ServiceState, ServiceStatus, ServiceType,
+        ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
+        ServiceType,
     },
     service_control_handler::{self, ServiceControlHandlerResult},
     service_dispatcher,
 };
 
-use crate::{run_monitor, run_serve};
+use crate::runner::{run_monitor, run_serve};
 use dm_core::config::AppConfig;
 
 const SERVICE_NAME: &str = "DirectoryMonitor";
@@ -52,7 +52,9 @@ fn run_service_inner() -> Result<()> {
 
     // Parse command line arguments to get config path
     let args: Vec<String> = std::env::args().collect();
-    let config_path = args.iter().position(|a| a == "-c" || a == "--config")
+    let config_path = args
+        .iter()
+        .position(|a| a == "-c" || a == "--config")
         .and_then(|i| args.get(i + 1))
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::PathBuf::from("config.toml"));
@@ -69,11 +71,14 @@ fn run_service_inner() -> Result<()> {
     })?;
 
     // Load configuration
-    let config = AppConfig::load(&config_path)
-        .unwrap_or_else(|e| {
-            tracing::warn!("Failed to load config from {}: {}, using defaults", config_path.display(), e);
-            AppConfig::default()
-        });
+    let config = AppConfig::load(&config_path).unwrap_or_else(|e| {
+        tracing::warn!(
+            "Failed to load config from {}: {}, using defaults",
+            config_path.display(),
+            e
+        );
+        AppConfig::default()
+    });
 
     // Create tokio runtime and run the monitor
     let rt = tokio::runtime::Runtime::new()?;
@@ -174,9 +179,7 @@ pub fn uninstall_service() -> Result<()> {
     use std::process::Command;
 
     // Stop the service first
-    let _ = Command::new("sc.exe")
-        .args(["stop", SERVICE_NAME])
-        .output();
+    let _ = Command::new("sc.exe").args(["stop", SERVICE_NAME]).output();
 
     // Wait a moment for the service to stop
     std::thread::sleep(std::time::Duration::from_secs(2));

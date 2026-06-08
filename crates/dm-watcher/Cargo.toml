@@ -3,6 +3,7 @@ name = "dm-watcher"
 description = "Filesystem monitoring engine for Directory Monitor"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]

@@ -192,6 +192,24 @@ impl EventStore {
         Ok(events)
     }
 
+    /// Query events using an EventQuery struct.
+    pub async fn query_events(
+        &self,
+        query: crate::EventQuery,
+    ) -> Result<Vec<FsEvent>, StorageError> {
+        self.query(
+            query.limit,
+            query.offset,
+            &query.event_types,
+            query.watch_root.as_deref(),
+            query.search.as_deref(),
+            query.after.as_deref(),
+            query.before.as_deref(),
+            query.is_dir,
+        )
+        .await
+    }
+
     /// Get the total number of stored events.
     pub async fn count(&self) -> Result<usize, StorageError> {
         let conn = self.conn.lock().await;

@@ -25,7 +25,7 @@ endif
 ARCH        := $(shell uname -m 2>/dev/null || echo x86_64)
 DIST_NAME   := $(APP_NAME)-$(PLATFORM)-$(ARCH)
 
-.PHONY: all build release test clean dist install uninstall run validate help
+.PHONY: all build release test fmt-check lint check clean dist install uninstall run validate help
 
 ## Default target
 all: release
@@ -42,9 +42,16 @@ release:
 test:
 	cargo test
 
+## Check rustfmt formatting
+fmt-check:
+	cargo fmt --check
+
 ## Run clippy linter
 lint:
-	cargo clippy -- -D warnings
+	cargo clippy --workspace --all-targets -- -D warnings
+
+## Run all local quality checks
+check: fmt-check lint test
 
 ## Clean build artifacts
 clean:
@@ -95,7 +102,9 @@ help:
 	@echo "  make build        Build debug"
 	@echo "  make release      Build release"
 	@echo "  make test         Run tests"
+	@echo "  make fmt-check    Check rustfmt formatting"
 	@echo "  make lint         Run clippy"
+	@echo "  make check        Run all quality checks (fmt + lint + test)"
 	@echo "  make clean        Clean build artifacts"
 	@echo "  make dist         Create distribution package"
 	@echo "  make install      Install to ~/.local/bin"

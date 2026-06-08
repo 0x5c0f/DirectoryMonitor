@@ -2,6 +2,7 @@
 name = "dm-metrics"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Performance metrics collection and Prometheus export for Directory Monitor"
 
@@ -20,4 +21,4 @@ chrono = { workspace = true }
 tracing = { workspace = true }
 
 # Utilities
-parking_lot = "0.12"
+parking_lot = { workspace = true }

@@ -9,7 +9,7 @@ fn test_config_default_values() {
     assert_eq!(config.server.port, 8080);
     assert!(config.server.password.is_empty());
     assert!(config.watches.is_empty());
-    assert_eq!(config.database.enabled, true);
+    assert!(config.database.enabled);
     assert_eq!(config.logging.level, "info");
 }
 
@@ -88,7 +88,7 @@ fn test_config_save_and_load() {
     assert_eq!(config2.server.port, 3000);
     assert_eq!(config2.watches.len(), 1);
     assert_eq!(config2.watches[0].path, PathBuf::from("/tmp/watch"));
-    assert_eq!(config2.watches[0].recursive, false);
+    assert!(!config2.watches[0].recursive);
     assert_eq!(config2.watches[0].exclude, vec!["*.tmp"]);
 }
 

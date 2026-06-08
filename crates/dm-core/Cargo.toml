@@ -3,6 +3,7 @@ name = "dm-core"
 description = "Core types and configuration for Directory Monitor"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]

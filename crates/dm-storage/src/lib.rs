@@ -1,6 +1,8 @@
+pub mod query;
 pub mod schema;
 pub mod sqlite;
 
+pub use query::EventQuery;
 pub use sqlite::EventStore;
 
 /// Storage-specific error type.

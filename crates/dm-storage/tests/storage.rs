@@ -1,7 +1,7 @@
 use chrono::{Duration, Utc};
 use dm_core::event::{EventType, FsEvent};
 use dm_storage::EventStore;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn make_event(event_type: EventType, path: &str, watch_root: &str) -> FsEvent {
     FsEvent::new(event_type, PathBuf::from(path), PathBuf::from(watch_root))
@@ -130,9 +130,7 @@ async fn test_filtered_query_by_watch_root() {
         .await
         .unwrap();
     assert_eq!(events.len(), 2);
-    assert!(events
-        .iter()
-        .all(|e| e.watch_root == PathBuf::from("/dir1")));
+    assert!(events.iter().all(|e| e.watch_root == Path::new("/dir1")));
 }
 
 #[tokio::test]
@@ -334,4 +332,24 @@ async fn test_schema_initialization() {
     // Should be able to query immediately after creation
     let count = store.count().await.unwrap();
     assert_eq!(count, 0);
+}
+
+// === EventQuery struct ===
+
+#[tokio::test]
+async fn test_query_with_event_query_struct() {
+    let store = EventStore::open_memory().unwrap();
+    let event = make_event(EventType::Created, "/tmp/query-struct.txt", "/watch");
+    store.insert(&event).await.unwrap();
+
+    let query = dm_storage::EventQuery {
+        limit: 10,
+        offset: 0,
+        event_types: vec!["CREATE".to_string()],
+        ..dm_storage::EventQuery::default()
+    };
+
+    let events = store.query_events(query).await.unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].path, PathBuf::from("/tmp/query-struct.txt"));
 }

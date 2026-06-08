@@ -1,3 +1,4 @@
+mod auth;
 mod frontend;
 mod hub;
 pub mod server;
