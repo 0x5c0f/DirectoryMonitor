@@ -3,27 +3,34 @@
 
 APP_NAME    := directory-monitor
 VERSION     := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-TARGET_DIR  := target/release
 DIST_DIR    := dist
 
-# Detect platform
+# Detect platform and set build target
 ifeq ($(OS),Windows_NT)
     PLATFORM  := windows
+    TARGET    := x86_64-pc-windows-msvc
     EXT       := .exe
 else
     UNAME_S   := $(shell uname -s)
     ifeq ($(UNAME_S),Linux)
         PLATFORM := linux
+        TARGET   := x86_64-unknown-linux-musl
         EXT      :=
     endif
     ifeq ($(UNAME_S),Darwin)
         PLATFORM := macos
+        TARGET   := x86_64-apple-darwin
         EXT      :=
     endif
 endif
 
+TARGET_DIR  = target/$(TARGET)/release
 ARCH        := $(shell uname -m 2>/dev/null || echo x86_64)
-DIST_NAME   := $(APP_NAME)-$(PLATFORM)-$(ARCH)
+ifeq ($(PLATFORM),linux)
+    DIST_NAME := $(APP_NAME)-$(PLATFORM)-musl-$(ARCH)
+else
+    DIST_NAME := $(APP_NAME)-$(PLATFORM)-$(ARCH)
+endif
 
 .PHONY: all build release test fmt-check lint check clean dist install uninstall run validate help
 
@@ -32,11 +39,11 @@ all: release
 
 ## Build debug version
 build:
-	cargo build
+	cargo build --target $(TARGET)
 
 ## Build release version
 release:
-	cargo build --release
+	cargo build --release --target $(TARGET)
 
 ## Run tests
 test:
@@ -64,6 +71,10 @@ dist: release
 	@cp $(TARGET_DIR)/$(APP_NAME)$(EXT) $(DIST_DIR)/$(DIST_NAME)/
 	@cp config.example.toml $(DIST_DIR)/$(DIST_NAME)/config.toml
 	@cp packaging/README.md $(DIST_DIR)/$(DIST_NAME)/README.md
+	@cp Makefile $(DIST_DIR)/$(DIST_NAME)/Makefile
+	@if [ -d docs ]; then \
+		cp -r docs $(DIST_DIR)/$(DIST_NAME)/; \
+	fi
 	@if [ -d packaging/$(PLATFORM) ]; then \
 		cp -r packaging/$(PLATFORM)/* $(DIST_DIR)/$(DIST_NAME)/; \
 	fi
@@ -111,6 +122,6 @@ help:
 	@echo "  make uninstall    Remove from ~/.local/bin"
 	@echo "  make run          Run with example config"
 	@echo "  make validate     Validate example config"
-	@echo "  make help         Show this help"
 	@echo ""
 	@echo "Platform: $(PLATFORM)-$(ARCH)"
+	@echo "Target:   $(TARGET)"
