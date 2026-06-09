@@ -27,6 +27,7 @@ enum DbCommand {
         after: Option<String>,
         before: Option<String>,
         is_dir: Option<bool>,
+        node_id: Option<String>,
         resp: oneshot::Sender<Result<Vec<FsEvent>, StorageError>>,
     },
     Count {
@@ -39,6 +40,7 @@ enum DbCommand {
         after: Option<String>,
         before: Option<String>,
         is_dir: Option<bool>,
+        node_id: Option<String>,
         resp: oneshot::Sender<Result<usize, StorageError>>,
     },
     PurgeBefore {
@@ -121,6 +123,7 @@ impl EventStore {
         after: Option<&str>,
         before: Option<&str>,
         is_dir: Option<bool>,
+        node_id: Option<&str>,
     ) -> Result<Vec<FsEvent>, StorageError> {
         let (resp_tx, resp_rx) = oneshot::channel();
         self.tx
@@ -133,6 +136,7 @@ impl EventStore {
                 after: after.map(String::from),
                 before: before.map(String::from),
                 is_dir,
+                node_id: node_id.map(String::from),
                 resp: resp_tx,
             })
             .await
@@ -154,6 +158,7 @@ impl EventStore {
             query.after.as_deref(),
             query.before.as_deref(),
             query.is_dir,
+            query.node_id.as_deref(),
         )
         .await
     }
@@ -177,6 +182,7 @@ impl EventStore {
         after: Option<&str>,
         before: Option<&str>,
         is_dir: Option<bool>,
+        node_id: Option<&str>,
     ) -> Result<usize, StorageError> {
         let (resp_tx, resp_rx) = oneshot::channel();
         self.tx
@@ -187,6 +193,7 @@ impl EventStore {
                 after: after.map(String::from),
                 before: before.map(String::from),
                 is_dir,
+                node_id: node_id.map(String::from),
                 resp: resp_tx,
             })
             .await
@@ -238,6 +245,7 @@ fn run_worker(db_path: PathBuf, mut rx: mpsc::Receiver<DbCommand>) -> Result<(),
                 after,
                 before,
                 is_dir,
+                node_id,
                 resp,
             } => {
                 let result = do_query(
@@ -250,6 +258,7 @@ fn run_worker(db_path: PathBuf, mut rx: mpsc::Receiver<DbCommand>) -> Result<(),
                     after.as_deref(),
                     before.as_deref(),
                     is_dir,
+                    node_id.as_deref(),
                 );
                 let _ = resp.send(result);
             }
@@ -264,6 +273,7 @@ fn run_worker(db_path: PathBuf, mut rx: mpsc::Receiver<DbCommand>) -> Result<(),
                 after,
                 before,
                 is_dir,
+                node_id,
                 resp,
             } => {
                 let result = do_count_filtered(
@@ -274,6 +284,7 @@ fn run_worker(db_path: PathBuf, mut rx: mpsc::Receiver<DbCommand>) -> Result<(),
                     after.as_deref(),
                     before.as_deref(),
                     is_dir,
+                    node_id.as_deref(),
                 );
                 let _ = resp.send(result);
             }
@@ -312,6 +323,7 @@ fn run_worker_memory(mut rx: mpsc::Receiver<DbCommand>) -> Result<(), StorageErr
                 after,
                 before,
                 is_dir,
+                node_id,
                 resp,
             } => {
                 let result = do_query(
@@ -324,6 +336,7 @@ fn run_worker_memory(mut rx: mpsc::Receiver<DbCommand>) -> Result<(), StorageErr
                     after.as_deref(),
                     before.as_deref(),
                     is_dir,
+                    node_id.as_deref(),
                 );
                 let _ = resp.send(result);
             }
@@ -338,6 +351,7 @@ fn run_worker_memory(mut rx: mpsc::Receiver<DbCommand>) -> Result<(), StorageErr
                 after,
                 before,
                 is_dir,
+                node_id,
                 resp,
             } => {
                 let result = do_count_filtered(
@@ -348,6 +362,7 @@ fn run_worker_memory(mut rx: mpsc::Receiver<DbCommand>) -> Result<(), StorageErr
                     after.as_deref(),
                     before.as_deref(),
                     is_dir,
+                    node_id.as_deref(),
                 );
                 let _ = resp.send(result);
             }
@@ -363,8 +378,8 @@ fn run_worker_memory(mut rx: mpsc::Receiver<DbCommand>) -> Result<(), StorageErr
 
 fn do_insert(conn: &Connection, event: &FsEvent) -> Result<(), StorageError> {
     conn.execute(
-        "INSERT INTO events (id, timestamp, event_type, path, target_path, is_dir, user_name, process_name, watch_root)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "INSERT INTO events (id, timestamp, event_type, path, target_path, is_dir, user_name, process_name, watch_root, node_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             event.id.to_string(),
             event.timestamp.to_rfc3339(),
@@ -375,6 +390,7 @@ fn do_insert(conn: &Connection, event: &FsEvent) -> Result<(), StorageError> {
             event.user,
             event.process,
             event.watch_root.to_string_lossy().to_string(),
+            event.node_id,
         ],
     )?;
     debug!(
@@ -389,8 +405,8 @@ fn do_insert_batch(conn: &Connection, events: &[FsEvent]) -> Result<(), StorageE
     let tx = conn.unchecked_transaction()?;
     for event in events {
         tx.execute(
-            "INSERT INTO events (id, timestamp, event_type, path, target_path, is_dir, user_name, process_name, watch_root)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO events (id, timestamp, event_type, path, target_path, is_dir, user_name, process_name, watch_root, node_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 event.id.to_string(),
                 event.timestamp.to_rfc3339(),
@@ -401,6 +417,7 @@ fn do_insert_batch(conn: &Connection, events: &[FsEvent]) -> Result<(), StorageE
                 event.user,
                 event.process,
                 event.watch_root.to_string_lossy().to_string(),
+                event.node_id,
             ],
         )?;
     }
@@ -420,11 +437,12 @@ fn do_query(
     after: Option<&str>,
     before: Option<&str>,
     is_dir: Option<bool>,
+    node_id: Option<&str>,
 ) -> Result<Vec<FsEvent>, StorageError> {
     let (where_clause, mut param_values) =
-        build_where_clause(event_types, watch_root, search, after, before, is_dir);
+        build_where_clause(event_types, watch_root, search, after, before, is_dir, node_id);
     let mut sql = format!(
-        "SELECT id, timestamp, event_type, path, target_path, is_dir, user_name, process_name, watch_root
+        "SELECT id, timestamp, event_type, path, target_path, is_dir, user_name, process_name, watch_root, node_id
          FROM events WHERE 1=1{}",
         where_clause
     );
@@ -447,6 +465,7 @@ fn do_query(
         let user: Option<String> = row.get(6)?;
         let process: Option<String> = row.get(7)?;
         let watch_root_str: String = row.get(8)?;
+        let node_id: String = row.get(9)?;
 
         let id = id_str.parse::<uuid::Uuid>().map_err(|e| {
             rusqlite::Error::InvalidParameterName(format!("Invalid UUID '{}': {}", id_str, e))
@@ -495,6 +514,7 @@ fn do_query(
             user,
             process,
             watch_root: PathBuf::from(watch_root_str),
+            node_id,
         })
     })?;
 
@@ -518,9 +538,10 @@ fn do_count_filtered(
     after: Option<&str>,
     before: Option<&str>,
     is_dir: Option<bool>,
+    node_id: Option<&str>,
 ) -> Result<usize, StorageError> {
     let (where_clause, param_values) =
-        build_where_clause(event_types, watch_root, search, after, before, is_dir);
+        build_where_clause(event_types, watch_root, search, after, before, is_dir, node_id);
     let sql = format!("SELECT COUNT(*) FROM events WHERE 1=1{}", where_clause);
 
     let params_ref: Vec<&dyn rusqlite::types::ToSql> =
@@ -547,6 +568,7 @@ fn build_where_clause(
     after: Option<&str>,
     before: Option<&str>,
     is_dir: Option<bool>,
+    node_id: Option<&str>,
 ) -> (String, Vec<Box<dyn rusqlite::types::ToSql>>) {
     let mut clause = String::new();
     let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
@@ -581,6 +603,22 @@ fn build_where_clause(
     if let Some(dir) = is_dir {
         clause.push_str(" AND is_dir = ?");
         param_values.push(Box::new(dir));
+    }
+    if let Some(nid) = node_id {
+        if !nid.is_empty() {
+            // Support comma-separated node IDs
+            let ids: Vec<&str> = nid.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+            if ids.len() == 1 {
+                clause.push_str(" AND node_id = ?");
+                param_values.push(Box::new(ids[0].to_string()));
+            } else if ids.len() > 1 {
+                let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
+                clause.push_str(&format!(" AND node_id IN ({})", placeholders.join(",")));
+                for id in ids {
+                    param_values.push(Box::new(id.to_string()));
+                }
+            }
+        }
     }
 
     (clause, param_values)

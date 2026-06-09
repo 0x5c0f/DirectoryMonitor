@@ -141,7 +141,6 @@ mod tests {
             include,
             exclude,
             event_types,
-            log_file: None,
             log_format: None,
             script: None,
             script_mode: "async".to_string(),

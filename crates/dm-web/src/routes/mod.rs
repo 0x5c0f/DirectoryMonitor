@@ -1,3 +1,4 @@
+pub(crate) mod cluster;
 pub(crate) mod config;
 pub(crate) mod events;
 pub(crate) mod metrics;

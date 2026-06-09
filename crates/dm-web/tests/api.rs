@@ -68,6 +68,10 @@ fn build_router(ctx: &TestContext) -> Router {
         watcher_manager: Arc::clone(&ctx.watcher_manager),
         filters: Arc::clone(&ctx.filters),
         metrics: Arc::clone(&ctx.metrics),
+        cluster_node_id: String::new(),
+        cluster_node_name: String::new(),
+        node_registry: None,
+        cluster_aggregator: None,
     };
     dm_web::build_router(state)
 }
@@ -585,7 +589,6 @@ async fn test_config_put_watch_partial_update() {
         include: vec!["*.txt".to_string()],
         exclude: vec![],
         event_types: vec![],
-        log_file: None,
         log_format: None,
         script: None,
         script_mode: "async".to_string(),
@@ -627,7 +630,6 @@ async fn test_config_delete_watch() {
         include: vec![],
         exclude: vec![],
         event_types: vec![],
-        log_file: None,
         log_format: None,
         script: None,
         script_mode: "async".to_string(),

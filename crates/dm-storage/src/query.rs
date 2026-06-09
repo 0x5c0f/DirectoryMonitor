@@ -9,6 +9,7 @@ pub struct EventQuery {
     pub after: Option<String>,
     pub before: Option<String>,
     pub is_dir: Option<bool>,
+    pub node_id: Option<String>,
 }
 
 impl EventQuery {

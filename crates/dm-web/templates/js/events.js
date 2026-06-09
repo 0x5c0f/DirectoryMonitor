@@ -1,3 +1,7 @@
+// ── Events (Single Node Real-time) ──────────────────────
+// This page shows real-time events from the current node only.
+// For aggregated cluster events, use the "集群事件" tab.
+
 // ── Target Type Filter ─────────────────────────────
 let currentTargetType = ''; // '' = all, 'file', 'dir'
 
@@ -155,7 +159,7 @@ function renderEvents() {
 
   countEl.textContent = allEvents.length + ' 条事件';
   if (allEvents.length === 0) {
-    list.innerHTML = '<div class="empty-msg"><div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-muted)"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>暂无匹配事件</div>';
+    list.innerHTML = '<div class="empty-msg"><div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-muted)"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>等待文件系统事件...</div>';
     return;
   }
   let html = '';
@@ -252,6 +256,17 @@ async function loadHistory(page) {
   // 传递事件类型过滤（非全选时）
   if (selectedTypes.size > 0 && selectedTypes.size < EVENT_TYPES.length) {
     url += '&types=' + encodeURIComponent([...selectedTypes].join(','));
+  }
+  // 传递时间范围
+  if (currentTimeAfter) {
+    url += '&after=' + encodeURIComponent(currentTimeAfter);
+  }
+  if (currentTimeBefore) {
+    url += '&before=' + encodeURIComponent(currentTimeBefore);
+  }
+  // 传递目标类型过滤
+  if (currentTargetType) {
+    url += '&target_type=' + encodeURIComponent(currentTargetType);
   }
   try {
     const resp = await fetch(url, { headers: authHeaders() });
@@ -381,40 +396,3 @@ function applyCustomTime() {
 
   loadHistory(1);
 }
-
-// Update loadHistory to include time range and target type
-const originalLoadHistory = loadHistory;
-loadHistory = async function(page) {
-  page = page || currentPage || 1;
-  const searchVal = searchInput.value.trim();
-  let url = '/api/events?page=' + page + '&per_page=' + PER_PAGE;
-  if (searchVal) url += '&search=' + encodeURIComponent(searchVal);
-  // 传递事件类型过滤（非全选时）
-  if (selectedTypes.size > 0 && selectedTypes.size < EVENT_TYPES.length) {
-    url += '&types=' + encodeURIComponent([...selectedTypes].join(','));
-  }
-  // 传递时间范围
-  if (currentTimeAfter) {
-    url += '&after=' + encodeURIComponent(currentTimeAfter);
-  }
-  if (currentTimeBefore) {
-    url += '&before=' + encodeURIComponent(currentTimeBefore);
-  }
-  // 传递目标类型过滤
-  if (currentTargetType) {
-    url += '&target_type=' + encodeURIComponent(currentTargetType);
-  }
-  try {
-    const resp = await fetch(url, { headers: authHeaders() });
-    const data = await resp.json();
-    if (data.events) {
-      events = data.events;
-      liveEvents = [];  // 加载新页时清除实时事件
-      currentPage = data.page || 1;
-      totalPages = data.total_pages || 1;
-      localStorage.setItem('dm_events_page', currentPage);
-      updatePagination(data.total || 0);
-      renderEvents();
-    }
-  } catch {}
-};

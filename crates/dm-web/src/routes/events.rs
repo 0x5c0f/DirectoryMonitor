@@ -14,6 +14,7 @@ use crate::server::{AppState, EventPayload};
 /// - after: ISO 8601 timestamp (inclusive start)
 /// - before: ISO 8601 timestamp (inclusive end)
 /// - target_type: "file" or "dir" to filter by file type
+/// - node_id: filter by specific node ID (cluster mode only)
 pub(crate) async fn events_handler(
     headers: HeaderMap,
     Query(params): Query<std::collections::HashMap<String, String>>,
@@ -59,11 +60,87 @@ pub(crate) async fn events_handler(
             "file" => Some(false),
             _ => None,
         });
+    let node_filter = params
+        .get("node_id")
+        .map(|s| s.as_str())
+        .filter(|s| !s.is_empty());
     let offset = (page - 1) * per_page;
 
+    // Use ClusterQueryAggregator if available (cluster mode)
+    if let Some(ref aggregator) = state.cluster_aggregator {
+        let query = dm_storage::EventQuery {
+            limit: per_page + offset, // Fetch enough for pagination
+            offset: 0,                // Aggregator handles offset internally
+            event_types: event_types.clone(),
+            watch_root: None,
+            search: search.map(|s| s.to_string()),
+            after: after.map(|s| s.to_string()),
+            before: before.map(|s| s.to_string()),
+            is_dir,
+            node_id: node_filter.map(|s| s.to_string()),
+        };
+
+        match aggregator.query_all(&query, node_filter).await {
+            Ok(cluster_events) => {
+                let total = cluster_events.len();
+                // Apply pagination to aggregated results
+                let paginated: Vec<_> = cluster_events
+                    .into_iter()
+                    .skip(offset)
+                    .take(per_page)
+                    .collect();
+
+                let events: Vec<serde_json::Value> = paginated
+                    .iter()
+                    .map(|e| {
+                        serde_json::json!({
+                            "id": e.id,
+                            "timestamp": e.timestamp,
+                            "event_type": e.event_type,
+                            "path": e.path,
+                            "target_path": e.old_path,
+                            "is_dir": e.is_directory,
+                            "watch_root": "",
+                            "node_id": e.node_id,
+                            "node_name": e.node_name,
+                        })
+                    })
+                    .collect();
+
+                let total_pages = if total == 0 { 1 } else { total.div_ceil(per_page) };
+
+                return Ok(axum::response::Json(serde_json::json!({
+                    "events": events,
+                    "total": total,
+                    "page": page,
+                    "per_page": per_page,
+                    "total_pages": total_pages,
+                    "filters": {
+                        "search": search,
+                        "types": event_types,
+                        "after": after,
+                        "before": before,
+                        "target_type": params.get("target_type"),
+                        "node_id": node_filter,
+                    }
+                })));
+            }
+            Err(e) => {
+                tracing::error!("Cluster query failed, falling back to local: {e}");
+                // Fall through to local query
+            }
+        }
+    }
+
+    // If cluster aggregator is available but query failed, try local store
+    if state.cluster_aggregator.is_some() && state.store.is_some() {
+        tracing::info!("Cluster query failed, falling back to local store");
+    }
+
+    // Local-only query (standalone mode or cluster query failed)
     let (events, total) = if let Some(ref store) = state.store {
         let total = store
-            .count_filtered(&event_types, None, search, after, before, is_dir)
+            .count_filtered(&event_types, None, search, after, before, is_dir, node_filter)
             .await
             .unwrap_or(0);
         let evts = store
@@ -76,6 +153,7 @@ pub(crate) async fn events_handler(
                 after,
                 before,
                 is_dir,
+                node_filter,
             )
             .await
             .unwrap_or_default();

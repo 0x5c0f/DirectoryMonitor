@@ -1,0 +1,43 @@
+[package]
+name = "dm-cluster"
+description = "Cluster communication and distributed query for Directory Monitor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# Internal
+dm-core = { workspace = true }
+dm-storage = { workspace = true }
+dm-watcher = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+
+# Utilities
+uuid = { workspace = true }
+
+# gRPC
+tonic = "0.12"
+prost = "0.13"
+
+# TLS
+rustls-pemfile = "2"
+tokio-rustls = "0.26"
+
+# Hostname
+hostname = "0.4"
+
+[build-dependencies]
+tonic-build = "0.12"

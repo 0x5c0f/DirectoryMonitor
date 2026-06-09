@@ -7,18 +7,6 @@
 #   ./directory-monitor -c config.toml serve  # Web 服务模式（浏览器访问）
 
 # -----------------------------------------------------------------------------
-# 全局设置
-# -----------------------------------------------------------------------------
-[general]
-# 是否以系统服务模式运行（Windows 服务 / systemd / launchd）
-# true: 后台运行，无需用户登录
-# false: 前台运行，适合手动启动或调试
-service_mode = false
-
-# 是否在系统托盘显示气泡通知（仅 GUI 模式有效）
-balloon_notifications = true
-
-# -----------------------------------------------------------------------------
 # 监控目标（可配置多个，每个 [[watches]] 块为一个独立目标）
 # -----------------------------------------------------------------------------
 [[watches]]
@@ -68,11 +56,6 @@ exclude = ["*.tmp", "~*", "*.swp"]
 #   event_types = ["created", "modified", "deleted"]       # 小写过去式
 #   event_types = ["Created", "Modified", "Deleted"]       # 混合大小写
 event_types = ["created", "modified", "deleted", "renamed"]
-
-# 此目标的独立日志文件路径（可选）
-# 设置后，该目标的事件会写入此文件
-# 不设置 = 使用全局 [logging] 配置
-# log_file = "/var/log/dirmon-documents.log"
 
 # 此目标的独立日志格式（可选，不设置则使用全局 [logging].format）
 # 支持的占位符:
@@ -137,9 +120,6 @@ use_tls = true
 # 批量发送：累积多少事件后合并为一封邮件（0 = 每个事件单独发送）
 batch_size = 10
 
-# 批量发送：等待多少秒后强制发送（即使未达到 batch_size）
-batch_timeout_secs = 60
-
 # 节流：每分钟最多发送多少封邮件（防止高频事件导致邮件轰炸）
 max_per_minute = 10
 
@@ -184,15 +164,17 @@ facility = "user"
 enabled = true
 
 # SQLite 数据库文件路径
-path = "directory-monitor.db"
+# systemd 部署建议使用绝对路径（StateDirectory 会自动创建 /var/lib/directory-monitor）
+# 非 systemd 部署可使用相对路径（相对于配置文件所在目录）
+path = "/var/lib/directory-monitor/directory-monitor.db"
 
 # -----------------------------------------------------------------------------
 # 日志设置
 # -----------------------------------------------------------------------------
 [logging]
 # 全局日志文件路径（可选）
-# 设置后，所有监控目标的事件都写入此文件
-# 不设置 = 仅输出到终端（stdout）
+# 注意：此字段当前未被使用，日志仅输出到终端（stdout）
+# 服务模式下建议通过 systemd/journalctl 或输出重定向管理日志
 # file = "/var/log/directory-monitor.log"
 
 # 全局日志格式（各目标可通过 [[watches]].log_format 覆盖）
@@ -200,10 +182,11 @@ path = "directory-monitor.db"
 format = "%timestamp% [%event%] %path%"
 
 # 日志文件轮转策略:
+# 注意：此字段当前未被使用，日志轮转功能尚未实现
 #   "daily"   - 按天轮转
 #   "monthly" - 按月轮转
 #   "never"   - 不轮转（单文件持续追加）
-rotation = "daily"
+# rotation = "daily"
 
 # 应用日志级别（控制 tracing 日志详细程度）:
 #   "trace" - 最详细
@@ -231,3 +214,59 @@ port = 8080
 # Web 访问密码（留空 = 不需要密码）
 # 设置后，浏览器需要输入此密码才能查看事件和配置
 password = ""
+
+# -----------------------------------------------------------------------------
+# 集群设置（可选，v0.3.0+）
+# -----------------------------------------------------------------------------
+[cluster]
+# 是否启用集群模式
+# 启用后，节点通过 NATS 进行事件同步和心跳检测
+enabled = false
+
+# 节点名称（人类可读，用于显示）
+# 留空则自动使用 hostname
+# node_name = "server-1"
+
+# 节点唯一标识（UUID 格式）
+# 留空则自动生成（首次运行时创建并持久化）
+# node_id = ""
+
+# gRPC 监听地址（用于其他节点查询本节点数据）
+# 注意：默认端口 9101，避免与 node_exporter（默认 9100）冲突
+listen_addr = "0.0.0.0:9101"
+
+# 心跳发送间隔（秒）
+heartbeat_interval_secs = 5
+
+# 节点超时时间（秒），超过此时间未收到心跳则标记为离线
+node_timeout_secs = 30
+
+# 事件缓存大小（最近 N 条集群事件保留在内存中）
+event_cache_size = 10000
+
+# 静态对等节点列表（可选）
+# 每个 [[cluster.peers]] 块定义一个其他节点的 gRPC 地址
+# 注意：只列其他节点，不要包含当前节点自身
+# 假设 3 节点集群 (A: 10.0.0.1, B: 10.0.0.2, C: 10.0.0.3):
+#   节点 A 的 peers 列 B 和 C
+#   节点 B 的 peers 列 A 和 C
+#   节点 C 的 peers 列 A 和 B
+# [[cluster.peers]]
+# addr = "10.0.0.2:9100"
+# timeout_secs = 10
+
+# [[cluster.peers]]
+# addr = "10.0.0.3:9100"
+
+# TLS 配置（可选）
+# [cluster.tls]
+# 是否启用 TLS
+# enabled = false
+# 证书文件路径
+# cert_file = "/path/to/cert.pem"
+# 私钥文件路径
+# key_file = "/path/to/key.pem"
+# CA 证书文件路径（用于验证客户端证书）
+# ca_file = "/path/to/ca.pem"
+# 是否验证客户端证书（mTLS）
+# verify_client = false

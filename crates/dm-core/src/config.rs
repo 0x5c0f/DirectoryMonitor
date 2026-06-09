@@ -5,8 +5,6 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
-    /// General settings.
-    pub general: GeneralConfig,
     /// Directories to monitor.
     pub watches: Vec<WatchConfig>,
     /// Notification settings.
@@ -17,6 +15,8 @@ pub struct AppConfig {
     pub logging: LoggingConfig,
     /// Web server settings.
     pub server: ServerConfig,
+    /// Cluster settings.
+    pub cluster: ClusterConfig,
 }
 
 impl AppConfig {
@@ -27,7 +27,22 @@ impl AppConfig {
                 path: path.display().to_string(),
                 source: e,
             })?;
-        toml::from_str(&content).map_err(crate::error::ConfigError::ParseFailed)
+        let mut config: AppConfig =
+            toml::from_str(&content).map_err(crate::error::ConfigError::ParseFailed)?;
+        // Resolve relative paths against the config file's directory
+        if let Some(config_dir) = path.parent() {
+            config.resolve_paths(config_dir);
+        }
+        Ok(config)
+    }
+
+    /// Resolve relative paths in the config against a base directory.
+    /// This ensures relative database paths work correctly regardless of
+    /// the process's current working directory (e.g., under systemd).
+    fn resolve_paths(&mut self, base_dir: &Path) {
+        if self.database.enabled && self.database.path.is_relative() {
+            self.database.path = base_dir.join(&self.database.path);
+        }
     }
 
     /// Save configuration to a TOML file.
@@ -38,24 +53,6 @@ impl AppConfig {
             path: path.display().to_string(),
             source: e,
         })
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct GeneralConfig {
-    /// Run as a system service.
-    pub service_mode: bool,
-    /// Enable balloon notifications in GUI.
-    pub balloon_notifications: bool,
-}
-
-impl Default for GeneralConfig {
-    fn default() -> Self {
-        Self {
-            service_mode: false,
-            balloon_notifications: true,
-        }
     }
 }
 
@@ -76,8 +73,6 @@ pub struct WatchConfig {
     /// Event types to monitor (empty = all).
     #[serde(default)]
     pub event_types: Vec<String>,
-    /// Log file path for this watch (optional, uses global if not set).
-    pub log_file: Option<PathBuf>,
     /// Custom log format with macro placeholders.
     pub log_format: Option<String>,
     /// Script/command to execute on events.
@@ -121,8 +116,6 @@ pub struct EmailConfig {
     pub use_tls: bool,
     /// Batch events before sending (0 = send immediately).
     pub batch_size: usize,
-    /// Seconds to wait before sending batch.
-    pub batch_timeout_secs: u64,
     /// Max emails per minute (throttle).
     pub max_per_minute: u32,
 }
@@ -138,7 +131,6 @@ impl Default for EmailConfig {
             from_address: String::new(),
             use_tls: true,
             batch_size: 0,
-            batch_timeout_secs: 60,
             max_per_minute: 10,
         }
     }
@@ -244,4 +236,84 @@ impl Default for ServerConfig {
             password: String::new(),
         }
     }
+}
+
+/// Cluster configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ClusterConfig {
+    /// Whether cluster mode is enabled.
+    pub enabled: bool,
+    /// Node display name.
+    pub node_name: String,
+    /// Unique node ID (auto-generated if empty).
+    pub node_id: String,
+    /// Address to listen for cluster connections (gRPC).
+    pub listen_addr: String,
+    /// Heartbeat interval in seconds.
+    pub heartbeat_interval_secs: u64,
+    /// Node timeout in seconds (mark as offline).
+    pub node_timeout_secs: u64,
+    /// Max events in cluster event cache (ring buffer).
+    pub event_cache_size: usize,
+    /// TLS configuration.
+    pub tls: TlsConfig,
+    /// Static peer list.
+    pub peers: Vec<PeerConfig>,
+}
+
+impl Default for ClusterConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            node_name: hostname::get()
+                .ok()
+                .and_then(|h| h.into_string().ok())
+                .unwrap_or_else(|| "unknown".to_string()),
+            node_id: String::new(), // Will be auto-generated and persisted on first run
+            listen_addr: "0.0.0.0:9101".to_string(),
+            heartbeat_interval_secs: 5,
+            node_timeout_secs: 30,
+            event_cache_size: 10000,
+            tls: TlsConfig::default(),
+            peers: Vec::new(),
+        }
+    }
+}
+
+/// TLS configuration for cluster connections.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TlsConfig {
+    /// Whether TLS is enabled.
+    pub enabled: bool,
+    /// Path to TLS certificate file.
+    pub cert_file: Option<String>,
+    /// Path to TLS private key file.
+    pub key_file: Option<String>,
+    /// Path to CA certificate file.
+    pub ca_file: Option<String>,
+    /// Whether to verify client certificates (mTLS).
+    pub verify_client: bool,
+}
+
+impl Default for TlsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            cert_file: None,
+            key_file: None,
+            ca_file: None,
+            verify_client: false,
+        }
+    }
+}
+
+/// Peer node configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeerConfig {
+    /// Peer address (host:port).
+    pub addr: String,
+    /// Custom timeout for this peer (e.g., for public network peers).
+    pub timeout_secs: Option<u64>,
 }

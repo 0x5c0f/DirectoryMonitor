@@ -201,7 +201,6 @@ pub(crate) async fn config_add_watch_handler(
                     .collect()
             })
             .unwrap_or_default(),
-        log_file: None,
         log_format: None,
         script: None,
         script_mode: "async".to_string(),

@@ -2,7 +2,7 @@ use rusqlite::Connection;
 use tracing::info;
 
 /// Current schema version.
-pub const SCHEMA_VERSION: i32 = 2;
+pub const SCHEMA_VERSION: i32 = 3;
 
 /// SQL statements to create the initial schema.
 const SCHEMA_SQL: &str = "
@@ -15,13 +15,15 @@ CREATE TABLE IF NOT EXISTS events (
     is_dir INTEGER,
     user_name TEXT,
     process_name TEXT,
-    watch_root TEXT NOT NULL
+    watch_root TEXT NOT NULL,
+    node_id TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_events_path ON events(path);
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
 CREATE INDEX IF NOT EXISTS idx_events_watch_root ON events(watch_root);
+CREATE INDEX IF NOT EXISTS idx_events_node_id ON events(node_id);
 
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER NOT NULL
@@ -64,6 +66,16 @@ fn migrate(conn: &Connection, from_version: i32) -> Result<(), String> {
         conn.execute("ALTER TABLE events ADD COLUMN is_dir INTEGER", [])
             .map_err(|e| format!("Failed to add is_dir column: {e}"))?;
         info!("Migration v1→v2: added is_dir column");
+    }
+
+    if from_version < 3 {
+        // v2 → v3: add node_id column for cluster support
+        conn.execute(
+            "ALTER TABLE events ADD COLUMN node_id TEXT NOT NULL DEFAULT ''",
+            [],
+        )
+        .map_err(|e| format!("Failed to add node_id column: {e}"))?;
+        info!("Migration v2→v3: added node_id column");
     }
 
     // Update schema version

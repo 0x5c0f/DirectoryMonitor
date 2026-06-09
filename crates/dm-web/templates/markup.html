@@ -69,6 +69,7 @@
     <nav class="nav-tabs" role="tablist" aria-label="主导航">
       <button class="active" data-tab="dashboard" role="tab" aria-selected="true" aria-controls="tab-dashboard">仪表盘</button>
       <button data-tab="events" role="tab" aria-selected="false" aria-controls="tab-events">事件日志</button>
+      <button data-tab="cluster-events" role="tab" aria-selected="false" aria-controls="tab-cluster-events" id="nav-cluster-events" style="display:none">集群事件</button>
       <button data-tab="settings" role="tab" aria-selected="false" aria-controls="tab-settings">监控配置</button>
     </nav>
     <div class="header-right">
@@ -151,6 +152,28 @@
           <div class="status-card-info">
             <div class="status-card-value" id="metric-db-size">0 B</div>
             <div class="status-card-label">数据库大小</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cluster Status (hidden when cluster disabled) -->
+      <div class="cluster-section" id="cluster-section" style="display:none">
+        <div class="cluster-header">
+          <h3>集群状态</h3>
+          <span class="cluster-badge" id="cluster-badge">未连接</span>
+        </div>
+        <div class="cluster-info">
+          <div class="cluster-info-item">
+            <span class="cluster-info-label">节点 ID</span>
+            <span class="cluster-info-value" id="cluster-node-id">-</span>
+          </div>
+          <div class="cluster-info-item">
+            <span class="cluster-info-label">节点名称</span>
+            <span class="cluster-info-value" id="cluster-node-name">-</span>
+          </div>
+          <div class="cluster-info-item">
+            <span class="cluster-info-label">集群节点</span>
+            <span class="cluster-info-value" id="cluster-node-count">-</span>
           </div>
         </div>
       </div>
@@ -297,6 +320,88 @@
       <span class="page-info"><input type="number" id="page-jump-input" class="page-input" min="1" onkeydown="if(event.key==='Enter')jumpToPage()" onchange="jumpToPage()"> / <span id="total-pages">1</span> (<span id="total-count">0</span> 条)</span>
       <button id="btn-next" onclick="goToPage(currentPage + 1)" disabled>下一页</button>
       <button id="btn-last" onclick="goToPage(totalPages)" disabled>末页</button>
+    </div>
+  </div>
+
+  <!-- Cluster Events Tab -->
+  <div class="tab-content" id="tab-cluster-events" role="tabpanel" aria-label="集群事件">
+    <div class="toolbar">
+      <div class="search-wrapper">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <label for="cluster-search" class="sr-only">搜索路径</label>
+        <input type="text" id="cluster-search" placeholder="搜索路径..." aria-label="搜索路径">
+      </div>
+      <div class="checkbox-dropdown" id="clusterTypeFilterDropdown">
+        <button class="checkbox-dropdown-btn" id="clusterTypeFilterBtn" aria-haspopup="listbox" aria-expanded="false" aria-controls="clusterTypeCheckboxes">
+          <span id="clusterTypeFilterLabel">所有类型</span>
+          <svg class="arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="checkbox-dropdown-panel" role="listbox" aria-multiselectable="true">
+          <div class="checkbox-dropdown-header">
+            <button onclick="selectAllClusterTypes()" type="button">全选</button>
+            <button onclick="clearAllClusterTypes()" type="button">清除</button>
+          </div>
+          <div id="clusterTypeCheckboxes"></div>
+        </div>
+      </div>
+      <div class="checkbox-dropdown" id="clusterNodeFilterDropdown">
+        <button class="checkbox-dropdown-btn" id="clusterNodeFilterBtn" aria-haspopup="listbox" aria-expanded="false" aria-controls="clusterNodeCheckboxes">
+          <span id="clusterNodeFilterLabel">所有节点</span>
+          <svg class="arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="checkbox-dropdown-panel" role="listbox" aria-multiselectable="true">
+          <div class="checkbox-dropdown-header">
+            <button onclick="selectAllClusterNodes()" type="button">全选</button>
+            <button onclick="clearAllClusterNodes()" type="button">清除</button>
+          </div>
+          <div id="clusterNodeCheckboxes"></div>
+        </div>
+      </div>
+      <div class="time-filter">
+        <div class="time-presets">
+          <button class="time-preset active" data-range="all" onclick="setClusterTimeRange('all')">全部</button>
+          <button class="time-preset" data-range="1h" onclick="setClusterTimeRange('1h')">1 小时</button>
+          <button class="time-preset" data-range="today" onclick="setClusterTimeRange('today')">今天</button>
+          <button class="time-preset" data-range="7d" onclick="setClusterTimeRange('7d')">7 天</button>
+          <button class="time-preset" data-range="custom" onclick="toggleClusterCustomTime()">自定义</button>
+        </div>
+        <div class="custom-time" id="clusterCustomTime" style="display:none">
+          <label for="clusterTimeAfter" class="sr-only">开始时间</label>
+          <input type="datetime-local" id="clusterTimeAfter" placeholder="开始时间" aria-label="开始时间">
+          <span class="time-sep">至</span>
+          <label for="clusterTimeBefore" class="sr-only">结束时间</label>
+          <input type="datetime-local" id="clusterTimeBefore" placeholder="结束时间" aria-label="结束时间">
+          <button class="btn-apply" onclick="applyClusterCustomTime()">应用</button>
+        </div>
+      </div>
+      <span class="count" id="cluster-count">0 条事件</span>
+    </div>
+    <div class="event-header">
+      <span class="event-col-time">时间</span>
+      <span class="event-col-type">事件</span>
+      <span class="event-col-target-type">类型</span>
+      <span class="event-col-path">目标</span>
+      <span class="event-col-node">节点</span>
+    </div>
+    <div class="event-list" id="cluster-list" role="log" aria-live="polite" aria-label="集群事件列表">
+      <div class="empty-msg">
+        <div class="empty-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-muted)">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+          </svg>
+        </div>
+        选择筛选条件后点击查询
+      </div>
+    </div>
+    <div class="pagination" id="cluster-pagination" style="display:none">
+      <button id="cluster-btn-first" onclick="goToClusterPage(1)" disabled>首页</button>
+      <button id="cluster-btn-prev" onclick="goToClusterPage(currentClusterPage - 1)" disabled>上一页</button>
+      <span class="page-info"><input type="number" id="cluster-page-jump-input" class="page-input" min="1" onkeydown="if(event.key==='Enter')jumpToClusterPage()" onchange="jumpToClusterPage()"> / <span id="cluster-total-pages">1</span> (<span id="cluster-total-count">0</span> 条)</span>
+      <button id="cluster-btn-next" onclick="goToClusterPage(currentClusterPage + 1)" disabled>下一页</button>
+      <button id="cluster-btn-last" onclick="goToClusterPage(totalClusterPages)" disabled>末页</button>
     </div>
   </div>
 

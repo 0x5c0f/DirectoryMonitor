@@ -11,6 +11,8 @@ pub struct EventPayload {
     pub target_path: Option<String>,
     pub is_dir: Option<bool>,
     pub watch_root: String,
+    /// Source node ID (empty for local/single-node mode).
+    pub node_id: String,
 }
 
 impl From<&FsEvent> for EventPayload {
@@ -23,6 +25,7 @@ impl From<&FsEvent> for EventPayload {
             target_path: e.target_path.as_ref().map(|p| p.display().to_string()),
             is_dir: e.is_dir,
             watch_root: e.watch_root.display().to_string(),
+            node_id: e.node_id.clone(),
         }
     }
 }

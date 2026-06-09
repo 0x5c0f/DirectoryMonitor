@@ -18,7 +18,7 @@ use tracing::info;
 use crate::auth::{auth_login_handler, auth_status_handler, auth_verify_handler};
 use crate::frontend::INDEX_HTML;
 pub use crate::hub::EventPayload;
-use crate::routes::{config, events, metrics, watchers};
+use crate::routes::{cluster, config, events, metrics, watchers};
 
 /// Shared application state for the web server.
 #[derive(Clone)]
@@ -31,6 +31,14 @@ pub struct AppState {
     pub watcher_manager: Arc<WatcherManager>,
     pub filters: Arc<RwLock<Vec<(PathBuf, EventFilter)>>>,
     pub metrics: Arc<MetricsRegistry>,
+    /// Cluster node ID (empty if cluster disabled).
+    pub cluster_node_id: String,
+    /// Cluster node name (empty if cluster disabled).
+    pub cluster_node_name: String,
+    /// Cluster node registry (None if cluster disabled or NATS unavailable).
+    pub node_registry: Option<dm_cluster::NodeRegistry>,
+    /// Cluster query aggregator for cross-node event queries (None if cluster disabled).
+    pub cluster_aggregator: Option<dm_cluster::ClusterQueryAggregator>,
 }
 
 /// Build the axum `Router` with all routes and shared state.
@@ -63,6 +71,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/auth/verify", get(auth_verify_handler))
         .route("/metrics", get(metrics::metrics_prometheus_handler))
         .route("/api/metrics/chart", get(metrics::metrics_chart_handler))
+        .route("/api/cluster/status", get(cluster::cluster_status))
+        .route("/api/cluster/nodes", get(cluster::cluster_nodes))
         .with_state(state)
 }
 
@@ -75,6 +85,10 @@ pub async fn run_server(
     watcher_manager: Arc<WatcherManager>,
     filters: Arc<RwLock<Vec<(PathBuf, EventFilter)>>>,
     metrics: Arc<MetricsRegistry>,
+    cluster_node_id: String,
+    cluster_node_name: String,
+    node_registry: Option<dm_cluster::NodeRegistry>,
+    cluster_aggregator: Option<dm_cluster::ClusterQueryAggregator>,
 ) -> Result<(), String> {
     let addr = format!("{}:{}", config.server.bind, config.server.port);
 
@@ -87,6 +101,10 @@ pub async fn run_server(
         watcher_manager,
         filters,
         metrics,
+        cluster_node_id,
+        cluster_node_name,
+        node_registry,
+        cluster_aggregator,
     };
 
     let app = build_router(state);

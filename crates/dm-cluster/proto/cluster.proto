@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package dm.cluster;
+
+option go_package = "dm/cluster";
+
+// Cluster service for distributed event queries, sync and heartbeat.
+service ClusterService {
+    // Query events from this node with filters.
+    rpc QueryEvents (QueryEventsRequest) returns (QueryEventsResponse);
+
+    // Get this node's status and stats.
+    rpc GetNodeStatus (NodeStatusRequest) returns (NodeStatusResponse);
+
+    // Publish a local event to this peer (fan-out from source node).
+    rpc PublishEvent (PublishEventRequest) returns (PublishEventResponse);
+
+    // Send a heartbeat to this peer.
+    rpc Heartbeat (HeartbeatRequest) returns (HeartbeatResponse);
+}
+
+// Request to query events from a node.
+message QueryEventsRequest {
+    uint32 limit = 1;
+    uint32 offset = 2;
+    repeated string event_types = 3;
+    optional string watch_root = 4;
+    optional string search = 5;
+    optional string after = 6;
+    optional string before = 7;
+    optional bool is_dir = 8;
+    optional string node_id = 9;
+}
+
+// Response containing events from a node.
+message QueryEventsResponse {
+    repeated EventRecord events = 1;
+    uint64 total = 2;
+    string node_id = 3;
+    string node_name = 4;
+}
+
+// A single event record for gRPC transport.
+message EventRecord {
+    string id = 1;
+    string timestamp = 2;
+    string event_type = 3;
+    string path = 4;
+    optional string target_path = 5;
+    optional bool is_dir = 6;
+    optional string user = 7;
+    optional string process = 8;
+    string watch_root = 9;
+    string node_id = 10;
+}
+
+// Request for node status.
+message NodeStatusRequest {}
+
+// Response with node status info.
+message NodeStatusResponse {
+    string node_id = 1;
+    string node_name = 2;
+    string listen_addr = 3;
+    uint64 event_count = 4;
+    uint32 watcher_count = 5;
+    string uptime = 6;
+}
+
+// Request to publish an event to a peer.
+message PublishEventRequest {
+    string node_id = 1;
+    string node_name = 2;
+    EventRecord event = 3;
+}
+
+// Response after publishing an event.
+message PublishEventResponse {}
+
+// Request to send a heartbeat.
+message HeartbeatRequest {
+    string node_id = 1;
+    string node_name = 2;
+    string listen_addr = 3;
+    uint32 watcher_count = 4;
+    uint64 event_count = 5;
+    int64 timestamp = 6;
+}
+
+// Response after receiving a heartbeat.
+message HeartbeatResponse {}

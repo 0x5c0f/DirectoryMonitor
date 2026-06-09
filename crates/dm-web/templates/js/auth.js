@@ -133,6 +133,9 @@ function activateTab(tabName) {
     targetBtn.setAttribute('aria-selected', 'true');
     $('tab-' + tabName).classList.add('active');
   }
+
+  // Note: cluster-events init is handled by cluster-events.js itself
+  // because auth.js loads before cluster-events.js in the bundle
 }
 
 document.querySelectorAll('.nav-tabs button').forEach(btn => {
@@ -143,13 +146,39 @@ document.querySelectorAll('.nav-tabs button').forEach(btn => {
 
     // Start/stop dashboard based on tab
     if (tabName === 'dashboard') {
-      initDashboard();
+      if (typeof initDashboard === 'function') initDashboard();
     } else {
-      stopDashboard();
+      if (typeof stopDashboard === 'function') stopDashboard();
     }
   });
 });
 
+// Show/hide cluster events tab based on cluster status
+function updateClusterEventsTabVisibility() {
+  const navBtn = document.getElementById('nav-cluster-events');
+  if (navBtn) {
+    navBtn.style.display = window._clusterEnabled ? '' : 'none';
+  }
+}
+
 // Restore active tab from localStorage
 const savedTab = localStorage.getItem('dm_active_tab');
-if (savedTab) activateTab(savedTab);
+if (savedTab) {
+  activateTab(savedTab);
+}
+
+// Check cluster status and update UI
+async function checkClusterAndUpdateUI() {
+  try {
+    const token = localStorage.getItem('dm_token');
+    const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+    const resp = await fetch('/api/cluster/status', { headers });
+    if (resp.ok) {
+      const data = await resp.json();
+      window._clusterEnabled = !!data.enabled;
+      updateClusterEventsTabVisibility();
+    }
+  } catch {}
+}
+
+checkClusterAndUpdateUI();

@@ -110,6 +110,8 @@ pub struct FsEvent {
     pub process: Option<String>,
     /// The directory being monitored that triggered this event.
     pub watch_root: PathBuf,
+    /// The node that produced this event (empty string for local/single-node mode).
+    pub node_id: String,
 }
 
 impl FsEvent {
@@ -124,6 +126,7 @@ impl FsEvent {
             user: None,
             process: None,
             watch_root,
+            node_id: String::new(),
         }
     }
 
@@ -148,6 +151,12 @@ impl FsEvent {
     #[must_use]
     pub fn with_process(mut self, process: String) -> Self {
         self.process = Some(process);
+        self
+    }
+
+    #[must_use]
+    pub fn with_node_id(mut self, node_id: String) -> Self {
+        self.node_id = node_id;
         self
     }
 
@@ -305,6 +314,7 @@ mod tests {
             user: Some("alice".to_string()),
             process: Some("vim".to_string()),
             watch_root: PathBuf::from("/home/user"),
+            node_id: String::new(),
         };
 
         let result =
@@ -327,6 +337,7 @@ mod tests {
             user: None,
             process: None,
             watch_root: PathBuf::from("/"),
+            node_id: String::new(),
         };
 
         let result = event.format_with("%path% -> %target%");

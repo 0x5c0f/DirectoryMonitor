@@ -533,10 +533,79 @@ function switchTimeRange(range) {
   }
 }
 
+// Fetch cluster status
+async function refreshClusterStatus() {
+  try {
+    const token = localStorage.getItem('dm_token');
+    const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+
+    const resp = await fetch('/api/cluster/status', { headers });
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    if (!data.enabled) {
+      window._clusterEnabled = false;
+      return;
+    }
+
+    window._clusterEnabled = true;
+
+    // Show cluster section
+    const section = document.getElementById('cluster-section');
+    if (section) section.style.display = '';
+
+    // Show node column in events
+    const colNode = document.getElementById('col-node');
+    if (colNode) colNode.style.display = '';
+
+    // Update cluster info
+    const nodeIdEl = document.getElementById('cluster-node-id');
+    const nodeNameEl = document.getElementById('cluster-node-name');
+    const badgeEl = document.getElementById('cluster-badge');
+
+    if (nodeIdEl) nodeIdEl.textContent = data.node_id || '-';
+    if (nodeNameEl) nodeNameEl.textContent = data.node_name || '-';
+
+    // Fetch nodes
+    const nodesResp = await fetch('/api/cluster/nodes', { headers });
+    if (nodesResp.ok) {
+      const nodes = await nodesResp.json();
+      const total = nodes.length || 1;
+      const online = nodes.filter(n => n.status === 'Online').length;
+      const offline = total - online;
+
+      // Update badge with cluster-wide status
+      if (badgeEl) {
+        if (online === total) {
+          badgeEl.textContent = '全部在线';
+          badgeEl.className = 'cluster-badge online';
+        } else if (online === 0) {
+          badgeEl.textContent = '全部离线';
+          badgeEl.className = 'cluster-badge offline';
+        } else {
+          badgeEl.textContent = '部分在线';
+          badgeEl.className = 'cluster-badge';
+          badgeEl.style.color = '#f0ad4e';
+        }
+      }
+
+      // Show total/online/offline
+      const countEl = document.getElementById('cluster-node-count');
+      if (countEl) countEl.textContent = `${total}/${online}/${offline}`;
+
+      // Initialize node filter in events tab
+      if (typeof initNodeCheckboxes === 'function') {
+        initNodeCheckboxes(nodes);
+      }
+    }
+  } catch {}
+}
+
 // Initialize dashboard
 function initDashboard() {
   initChartDefaults();
   refreshDashboard();
+  refreshClusterStatus();
 
   // Auto-refresh
   if (dashboardRefreshTimer) clearInterval(dashboardRefreshTimer);

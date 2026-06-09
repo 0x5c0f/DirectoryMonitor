@@ -8,11 +8,12 @@ members = [
     "crates/dm-notify",
     "crates/dm-metrics",
     "crates/dm-web",
+    "crates/dm-cluster",
     "crates/dm-cli",
 ]
 
 [workspace.package]
-version = "0.2.4"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 rust-version = "1.80"
@@ -25,6 +26,7 @@ dm-processor = { path = "crates/dm-processor" }
 dm-storage = { path = "crates/dm-storage" }
 dm-notify = { path = "crates/dm-notify" }
 dm-web = { path = "crates/dm-web" }
+dm-cluster = { path = "crates/dm-cluster" }
 dm-metrics = { path = "crates/dm-metrics" }
 
 # Web framework
@@ -45,7 +47,7 @@ notify = "7"
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 # Email
-lettre = { version = "0.11", features = ["smtp-transport", "tokio1-native-tls"] }
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "tokio1-rustls-tls", "builder"] }
 
 # Logging
 tracing = "0.1"
@@ -68,6 +70,15 @@ chrono = { version = "0.4", features = ["serde"] }
 # Utilities
 uuid = { version = "1", features = ["v4", "serde"] }
 parking_lot = "0.12"
+hostname = "0.4"
+
+# NATS
+async-nats = "0.35"
+
+# gRPC
+tonic = "0.12"
+prost = "0.13"
+tonic-build = "0.12"
 
 # Dev dependencies (used across multiple crates)
 tempfile = "3"

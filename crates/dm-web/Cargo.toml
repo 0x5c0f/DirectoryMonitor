@@ -14,6 +14,7 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 dm-core = { workspace = true }
+dm-cluster = { workspace = true }
 dm-metrics = { workspace = true }
 dm-processor = { workspace = true }
 dm-storage = { workspace = true }

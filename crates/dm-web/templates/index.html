@@ -41,7 +41,14 @@ body.theme-light { background: #f5f6f8; }
 (function() {
   var t = localStorage.getItem('dm_theme') || 'dark';
   document.documentElement.setAttribute('data-theme', t);
-  document.body.className = 'theme-' + t;
+  // Wait for body to be available
+  if (document.body) {
+    document.body.className = 'theme-' + t;
+  } else {
+    document.addEventListener('DOMContentLoaded', function() {
+      document.body.className = 'theme-' + t;
+    });
+  }
 })();
 </script>
 <style>{style}</style>

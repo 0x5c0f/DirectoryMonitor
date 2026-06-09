@@ -24,6 +24,8 @@ pub static INDEX_HTML: LazyLock<String> = LazyLock::new(|| {
         "\n",
         include_str!("../templates/js/events.js"),
         "\n",
+        include_str!("../templates/js/cluster-events.js"),
+        "\n",
         include_str!("../templates/js/modals.js"),
         "\n",
         include_str!("../templates/js/settings.js"),

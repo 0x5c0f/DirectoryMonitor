@@ -46,8 +46,8 @@ impl EventStore {
     pub async fn insert(&self, event: &FsEvent) -> Result<(), StorageError> {
         let conn = self.conn.lock().await;
         conn.execute(
-            "INSERT INTO events (id, timestamp, event_type, path, target_path, is_dir, user_name, process_name, watch_root)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO events (id, timestamp, event_type, path, target_path, is_dir, user_name, process_name, watch_root, node_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 event.id.to_string(),
                 event.timestamp.to_rfc3339(),
@@ -58,6 +58,7 @@ impl EventStore {
                 event.user,
                 event.process,
                 event.watch_root.to_string_lossy().to_string(),
+                event.node_id,
             ],
         )?;
         debug!(
@@ -74,8 +75,8 @@ impl EventStore {
         let tx = conn.unchecked_transaction()?;
         for event in events {
             tx.execute(
-                "INSERT INTO events (id, timestamp, event_type, path, target_path, is_dir, user_name, process_name, watch_root)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                "INSERT INTO events (id, timestamp, event_type, path, target_path, is_dir, user_name, process_name, watch_root, node_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 params![
                     event.id.to_string(),
                     event.timestamp.to_rfc3339(),
@@ -86,6 +87,7 @@ impl EventStore {
                     event.user,
                     event.process,
                     event.watch_root.to_string_lossy().to_string(),
+                    event.node_id,
                 ],
             )?;
         }
@@ -106,12 +108,13 @@ impl EventStore {
         after: Option<&str>,
         before: Option<&str>,
         is_dir: Option<bool>,
+        node_id: Option<&str>,
     ) -> Result<Vec<FsEvent>, StorageError> {
         let conn = self.conn.lock().await;
         let (where_clause, mut param_values) =
-            Self::build_where_clause(event_types, watch_root, search, after, before, is_dir);
+            Self::build_where_clause(event_types, watch_root, search, after, before, is_dir, node_id);
         let mut sql = format!(
-            "SELECT id, timestamp, event_type, path, target_path, is_dir, user_name, process_name, watch_root
+            "SELECT id, timestamp, event_type, path, target_path, is_dir, user_name, process_name, watch_root, node_id
              FROM events WHERE 1=1{}",
             where_clause
         );
@@ -134,6 +137,7 @@ impl EventStore {
             let user: Option<String> = row.get(6)?;
             let process: Option<String> = row.get(7)?;
             let watch_root_str: String = row.get(8)?;
+            let node_id: String = row.get(9)?;
 
             let id = id_str.parse::<uuid::Uuid>().map_err(|e| {
                 rusqlite::Error::InvalidParameterName(format!("Invalid UUID '{}': {}", id_str, e))
@@ -182,6 +186,7 @@ impl EventStore {
                 user,
                 process,
                 watch_root: PathBuf::from(watch_root_str),
+                node_id,
             })
         })?;
 
@@ -206,6 +211,7 @@ impl EventStore {
             query.after.as_deref(),
             query.before.as_deref(),
             query.is_dir,
+            query.node_id.as_deref(),
         )
         .await
     }
@@ -226,10 +232,11 @@ impl EventStore {
         after: Option<&str>,
         before: Option<&str>,
         is_dir: Option<bool>,
+        node_id: Option<&str>,
     ) -> Result<usize, StorageError> {
         let conn = self.conn.lock().await;
         let (where_clause, param_values) =
-            Self::build_where_clause(event_types, watch_root, search, after, before, is_dir);
+            Self::build_where_clause(event_types, watch_root, search, after, before, is_dir, node_id);
         let sql = format!("SELECT COUNT(*) FROM events WHERE 1=1{}", where_clause);
 
         let params_ref: Vec<&dyn rusqlite::types::ToSql> =
@@ -247,6 +254,7 @@ impl EventStore {
         after: Option<&str>,
         before: Option<&str>,
         is_dir: Option<bool>,
+        node_id: Option<&str>,
     ) -> (String, Vec<Box<dyn rusqlite::types::ToSql>>) {
         let mut clause = String::new();
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
@@ -281,6 +289,22 @@ impl EventStore {
         if let Some(dir) = is_dir {
             clause.push_str(" AND is_dir = ?");
             param_values.push(Box::new(dir));
+        }
+        if let Some(nid) = node_id {
+            if !nid.is_empty() {
+                // Support comma-separated node IDs
+                let ids: Vec<&str> = nid.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+                if ids.len() == 1 {
+                    clause.push_str(" AND node_id = ?");
+                    param_values.push(Box::new(ids[0].to_string()));
+                } else if ids.len() > 1 {
+                    let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
+                    clause.push_str(&format!(" AND node_id IN ({})", placeholders.join(",")));
+                    for id in ids {
+                        param_values.push(Box::new(id.to_string()));
+                    }
+                }
+            }
         }
 
         (clause, param_values)

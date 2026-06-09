@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 dm-core = { workspace = true }
+dm-cluster = { workspace = true }
 dm-metrics = { workspace = true }
 dm-watcher = { workspace = true }
 dm-processor = { workspace = true }
@@ -26,6 +27,8 @@ clap = { workspace = true }
 chrono = { workspace = true }
 anyhow = { workspace = true }
 serde_json = { workspace = true }
+uuid = { workspace = true }
+tokio-stream = "0.1"
 
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.7"

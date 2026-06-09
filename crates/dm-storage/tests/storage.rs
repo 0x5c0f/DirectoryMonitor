@@ -245,13 +245,13 @@ async fn test_count_filtered() {
         .unwrap();
 
     let count = store
-        .count_filtered(&["CREATE".to_string()], None, None, None, None, None)
+        .count_filtered(&["CREATE".to_string()], None, None, None, None, None, None)
         .await
         .unwrap();
     assert_eq!(count, 2);
 
     let count = store
-        .count_filtered(&[], None, None, None, None, None)
+        .count_filtered(&[], None, None, None, None, None, None)
         .await
         .unwrap();
     assert_eq!(count, 3);

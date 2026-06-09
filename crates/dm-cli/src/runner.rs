@@ -12,6 +12,7 @@ use tracing::{error, info, warn};
 use dm_web::server::EventPayload;
 
 use crate::pipeline::{process_watch_event, setup_monitoring};
+use crate::ClusterCommands;
 
 /// Run in monitor-only mode (no web server).
 pub(crate) async fn run_monitor(config: AppConfig) -> Result<()> {
@@ -84,6 +85,21 @@ pub(crate) async fn run_serve(
             config.server.bind = host.to_string();
             if let Ok(p) = port.parse() {
                 config.server.port = p;
+            }
+        }
+    }
+
+    // Generate and persist node_id if empty (cluster mode)
+    if config.cluster.enabled && config.cluster.node_id.is_empty() {
+        let new_node_id = uuid::Uuid::new_v4().to_string();
+        config.cluster.node_id = new_node_id.clone();
+        info!("Generated new node ID: {new_node_id}");
+
+        // Save to config file
+        if let Ok(mut file_config) = dm_core::config::AppConfig::load(&config_path) {
+            file_config.cluster.node_id = new_node_id;
+            if let Err(e) = file_config.save(&config_path) {
+                warn!("Failed to persist node ID to config: {e}");
             }
         }
     }
@@ -320,8 +336,140 @@ pub(crate) async fn run_serve(
         }
     });
 
+    // ── Cluster initialization ─────────────────────────────────────────────────
+    let mut cluster_node_id;
+    let mut cluster_node_name;
+    let mut node_registry: Option<dm_cluster::NodeRegistry> = None;
+    let mut cluster_aggregator: Option<dm_cluster::ClusterQueryAggregator> = None;
+
+    if config.cluster.enabled {
+        let node_id = config.cluster.node_id.clone();
+        let node_name = config.cluster.node_name.clone();
+        let listen_addr = config.cluster.listen_addr.clone();
+
+        cluster_node_id = node_id.clone();
+        cluster_node_name = node_name.clone();
+
+        // Build peer list from config
+        let peers: Vec<(String, String)> = config.cluster.peers.iter()
+            .enumerate()
+            .map(|(i, p)| (format!("peer-{}", i), p.addr.clone()))
+            .collect();
+
+        // Create PeerManager
+        match dm_cluster::PeerManager::new(node_id.clone(), peers).await {
+            Ok(peer_manager) => {
+                info!("PeerManager initialized with {} peers", config.cluster.peers.len());
+
+                // Create NodeRegistry
+                let registry = dm_cluster::NodeRegistry::new(
+                    node_id.clone(),
+                    node_name.clone(),
+                    listen_addr.clone(),
+                    config.cluster.node_timeout_secs as i64,
+                );
+
+                // Start EventSyncService
+                let event_sync = dm_cluster::EventSyncService::new(
+                    peer_manager.clone(),
+                    config.cluster.event_cache_size,
+                );
+                let event_cache = event_sync.cache().clone();
+                let sync_rx = event_tx.subscribe();
+                tokio::spawn(async move {
+                    event_sync.start_publish_loop(sync_rx).await;
+                });
+
+                // Start HeartbeatService
+                let heartbeat = dm_cluster::HeartbeatService::new(
+                    peer_manager.clone(),
+                    registry.clone(),
+                    listen_addr.clone(),
+                );
+                let hb_interval = config.cluster.heartbeat_interval_secs;
+                tokio::spawn(async move {
+                    heartbeat.start_publish_loop(hb_interval).await;
+                });
+
+                // Periodically update local node stats in registry
+                let stats_registry = registry.clone();
+                let stats_metrics = metrics.clone();
+                tokio::spawn(async move {
+                    let mut interval = tokio::time::interval(Duration::from_secs(10));
+                    loop {
+                        interval.tick().await;
+                        let watcher_count = stats_metrics.active_watchers.get() as usize;
+                        let event_count = stats_metrics.events_total.get() as u64;
+                        stats_registry
+                            .update_local_stats(watcher_count, event_count)
+                            .await;
+                    }
+                });
+
+                // Start gRPC server for distributed queries
+                if let Ok(addr) = listen_addr.parse::<std::net::SocketAddr>() {
+                    match dm_storage::EventStore::open(&config.database.path) {
+                        Ok(grpc_store) => {
+                            let grpc_node_id = node_id.clone();
+                            let grpc_node_name = node_name.clone();
+                            let grpc_cache = event_cache.clone();
+                            let grpc_registry = registry.clone();
+                            // Create a broadcast channel for cluster events
+                            let (cluster_event_tx, _) = tokio::sync::broadcast::channel::<dm_cluster::ClusterEvent>(1024);
+                            tokio::spawn(async move {
+                                if let Err(e) = dm_cluster::grpc::server::start_grpc_server_with_cluster(
+                                    addr,
+                                    grpc_store,
+                                    grpc_node_id,
+                                    grpc_node_name,
+                                    grpc_cache,
+                                    grpc_registry,
+                                    cluster_event_tx,
+                                )
+                                .await
+                                {
+                                    error!("gRPC server error: {e}");
+                                }
+                            });
+                            info!("gRPC server starting on {addr}");
+                        }
+                        Err(e) => {
+                            error!("Failed to open database for gRPC server: {e}");
+                        }
+                    }
+                } else {
+                    error!("Invalid cluster listen address: {listen_addr}");
+                }
+
+                // Spawn peer reconnection task
+                peer_manager.spawn_reconnect_task();
+
+                // Create ClusterQueryAggregator for cross-node event queries
+                if let Some(ref web_store) = store_for_web {
+                    let aggregator = dm_cluster::ClusterQueryAggregator::new(
+                        web_store.clone(),
+                        event_cache,
+                        registry.clone(),
+                    );
+                    cluster_aggregator = Some(aggregator);
+                    info!("Cluster query aggregator initialized");
+                }
+
+                node_registry = Some(registry);
+            }
+            Err(e) => {
+                warn!("Failed to initialize PeerManager: {e}. Running in standalone mode.");
+                cluster_node_id = String::new();
+                cluster_node_name = String::new();
+            }
+        }
+    } else {
+        cluster_node_id = String::new();
+        cluster_node_name = String::new();
+    }
+
     tokio::select! {
-        result = dm_web::run_server(config, config_path, store_for_web, web_event_tx, watcher_manager, filters_for_web, metrics) => {
+        result = dm_web::run_server(config, config_path, store_for_web, web_event_tx, watcher_manager, filters_for_web, metrics, cluster_node_id, cluster_node_name, node_registry, cluster_aggregator) => {
             if let Err(e) = result {
                 error!("Web server error: {e}");
             }
@@ -353,4 +501,81 @@ pub(crate) fn take_snapshot(path: &Path, output: &Path) -> Result<()> {
         output.display()
     );
     Ok(())
+}
+
+/// Run cluster management commands.
+pub(crate) async fn run_cluster(command: ClusterCommands, config: &AppConfig) -> Result<()> {
+    if !config.cluster.enabled {
+        anyhow::bail!("Cluster mode is not enabled. Set cluster.enabled = true in config.");
+    }
+
+    let node_id = config.cluster.node_id.clone();
+    let node_name = config.cluster.node_name.clone();
+
+    match command {
+        ClusterCommands::Status => {
+            info!("Cluster Status");
+            info!("  Node ID:   {}", node_id);
+            info!("  Node Name: {}", node_name);
+            info!("  Listen:     {}", config.cluster.listen_addr);
+            info!("  Peers:      {}", config.cluster.peers.len());
+            info!("  Heartbeat:  {}s", config.cluster.heartbeat_interval_secs);
+            info!("  Timeout:    {}s", config.cluster.node_timeout_secs);
+            Ok(())
+        }
+        ClusterCommands::Nodes => {
+            // Query each peer via gRPC to get node status
+            info!("Querying cluster nodes via gRPC...");
+
+            let registry = dm_cluster::NodeRegistry::new(
+                node_id.clone(),
+                node_name.clone(),
+                config.cluster.listen_addr.clone(),
+                config.cluster.node_timeout_secs as i64,
+            );
+
+            // Query each configured peer
+            for peer in &config.cluster.peers {
+                match dm_cluster::grpc::client::GrpcClient::connect(&peer.addr).await {
+                    Ok(mut client) => {
+                        match client.get_node_status().await {
+                            Ok(status) => {
+                                registry.update_heartbeat(
+                                    &status.node_id,
+                                    &status.node_name,
+                                    &status.listen_addr,
+                                    status.watcher_count,
+                                    status.event_count,
+                                ).await;
+                                info!("  ✓ {} ({}) - Online", status.node_name, status.node_id);
+                            }
+                            Err(e) => {
+                                warn!("  ✗ {} - Failed to get status: {}", peer.addr, e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("  ✗ {} - Connection failed: {}", peer.addr, e);
+                    }
+                }
+            }
+
+            // Print nodes
+            let nodes = registry.list_nodes().await;
+            info!("Cluster nodes ({}):", nodes.len());
+            for node in &nodes {
+                info!(
+                    "  [{}] {} ({}) - {} (watchers: {}, events: {})",
+                    node.status,
+                    node.name,
+                    node.id,
+                    node.addr,
+                    node.watcher_count,
+                    node.event_count,
+                );
+            }
+
+            Ok(())
+        }
+    }
 }

@@ -49,6 +49,11 @@ enum Commands {
         #[arg(short, long)]
         output: PathBuf,
     },
+    /// Cluster management commands.
+    Cluster {
+        #[command(subcommand)]
+        command: ClusterCommands,
+    },
     /// Install as a system service (Windows only).
     #[cfg(windows)]
     InstallService,
@@ -58,6 +63,14 @@ enum Commands {
     /// Run as a Windows service (Windows only).
     #[cfg(windows)]
     RunService,
+}
+
+#[derive(Subcommand)]
+enum ClusterCommands {
+    /// Show cluster status.
+    Status,
+    /// List cluster nodes.
+    Nodes,
 }
 
 use std::path::PathBuf;
@@ -90,6 +103,9 @@ async fn main() -> Result<()> {
         }
         Commands::Snapshot { path, output } => {
             runner::take_snapshot(&path, &output)?;
+        }
+        Commands::Cluster { command } => {
+            runner::run_cluster(command, &config).await?;
         }
         #[cfg(windows)]
         Commands::InstallService => {
