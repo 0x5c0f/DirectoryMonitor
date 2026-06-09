@@ -23,19 +23,22 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-musl
             arch: x86_64
             platform: linux
+            suffix: musl
             ext: ""
           - os: macos-latest
             target: x86_64-apple-darwin
             arch: x86_64
             platform: macos
+            suffix: ""
             ext: ""
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             arch: x86_64
             platform: windows
+            suffix: ""
             ext: ".exe"
 
     runs-on: ${{ matrix.os }}
@@ -45,13 +48,22 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install musl-tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
       - name: Build release
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Package (tarball)
         if: matrix.platform != 'windows'
         run: |
-          DIST_NAME="directory-monitor-${{ matrix.platform }}-${{ matrix.arch }}"
+          SUFFIX="${{ matrix.suffix }}"
+          if [ -n "$SUFFIX" ]; then
+            DIST_NAME="directory-monitor-${{ matrix.platform }}-${SUFFIX}-${{ matrix.arch }}"
+          else
+            DIST_NAME="directory-monitor-${{ matrix.platform }}-${{ matrix.arch }}"
+          fi
           mkdir -p "${DIST_NAME}"
           cp target/${{ matrix.target }}/release/directory-monitor${{ matrix.ext }} "${DIST_NAME}/"
           cp config.example.toml "${DIST_NAME}/config.toml"
@@ -74,7 +86,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: package-${{ matrix.platform }}-${{ matrix.arch }}
-          path: directory-monitor-${{ matrix.platform }}-${{ matrix.arch }}.*
+          path: directory-monitor-*${{ matrix.arch }}.*
 
   release:
     needs: build
