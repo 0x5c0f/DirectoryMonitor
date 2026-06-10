@@ -156,19 +156,37 @@ pub(crate) async fn process_watch_event(
             for watch_config in &config.watches {
                 if event.path.starts_with(&watch_config.path) {
                     if let Some(ref script) = watch_config.script {
-                        let executor = script_executor.clone();
-                        let script = script.clone();
-                        let event = event.clone();
-                        let mode = watch_config.script_mode.clone();
-                        tokio::spawn(async move {
-                            if mode == "sync" {
-                                if let Err(e) = executor.execute_sync(&script, &event, &[]) {
+                        // Check script_events filter: if configured, only matching events trigger script
+                        let should_trigger = if watch_config.script_events.is_empty() {
+                            true // Empty = use event_types (all events that passed the filter)
+                        } else {
+                            let event_type_str = event.event_type.to_string().to_lowercase();
+                            watch_config.script_events.iter().any(|t| {
+                                let t_lower = t.to_lowercase();
+                                t_lower == event_type_str
+                                    || t_lower == event_type_str.clone() + "d"
+                                    || t_lower
+                                        == event_type_str.trim_end_matches('e').to_owned() + "ed"
+                            })
+                        };
+
+                        if should_trigger {
+                            let executor = script_executor.clone();
+                            let script = script.clone();
+                            let event = event.clone();
+                            let mode = watch_config.script_mode.clone();
+                            tokio::spawn(async move {
+                                if mode == "sync" {
+                                    if let Err(e) = executor.execute_sync(&script, &event, &[]) {
+                                        error!("Script execution failed: {e}");
+                                    }
+                                } else if let Err(e) =
+                                    executor.execute(&script, &event, &[]).await
+                                {
                                     error!("Script execution failed: {e}");
                                 }
-                            } else if let Err(e) = executor.execute(&script, &event, &[]).await {
-                                error!("Script execution failed: {e}");
-                            }
-                        });
+                            });
+                        }
                         break;
                     }
                 }

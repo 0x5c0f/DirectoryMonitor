@@ -10,13 +10,6 @@
 # 全局设置
 # -----------------------------------------------------------------------------
 [general]
-# 是否以系统服务模式运行（Windows 服务 / systemd / launchd）
-# true: 后台运行，无需用户登录
-# false: 前台运行，适合手动启动或调试
-service_mode = false
-
-# 是否在系统托盘显示气泡通知（仅 GUI 模式有效）
-balloon_notifications = true
 
 # -----------------------------------------------------------------------------
 # 监控目标（可配置多个，每个 [[watches]] 块为一个独立目标）
@@ -69,11 +62,6 @@ exclude = ["*.tmp", "~*", "*.swp"]
 #   event_types = ["Created", "Modified", "Deleted"]       # 混合大小写
 event_types = ["created", "modified", "deleted", "renamed"]
 
-# 此目标的独立日志文件路径（可选）
-# 设置后，该目标的事件会写入此文件
-# 不设置 = 使用全局 [logging] 配置
-# log_file = "/var/log/dirmon-documents.log"
-
 # 此目标的独立日志格式（可选，不设置则使用全局 [logging].format）
 # 支持的占位符:
 #   %file%      - 文件名
@@ -94,6 +82,13 @@ event_types = ["created", "modified", "deleted", "renamed"]
 #   "async" - 异步执行，不阻塞事件处理（默认）
 #   "sync"  - 同步执行，等待脚本完成后才处理下一个事件
 # script_mode = "async"
+
+# 脚本触发事件过滤（可选）
+# 设置后，只有匹配的事件类型才会触发脚本执行
+# 留空 = 所有通过 event_types 过滤的事件都会触发脚本
+# 支持的格式与 event_types 相同（不区分大小写）
+# 示例: script_events = ["create", "delete"]
+# script_events = []
 
 # 此目标的邮件通知收件人列表（可选，需配合 [notifications.email] 使用）
 # email_recipients = ["admin@example.com"]
@@ -137,9 +132,6 @@ use_tls = true
 # 批量发送：累积多少事件后合并为一封邮件（0 = 每个事件单独发送）
 batch_size = 10
 
-# 批量发送：等待多少秒后强制发送（即使未达到 batch_size）
-batch_timeout_secs = 60
-
 # 节流：每分钟最多发送多少封邮件（防止高频事件导致邮件轰炸）
 max_per_minute = 10
 
@@ -171,9 +163,6 @@ facility = "user"
 # 不设置 = 使用默认格式 "%event%: %path%"
 # message_format = "%event%: %path% by %user%"
 
-# 注意：声音告警功能已在 Web UI 中移除
-# 如果你的配置文件中有 [notifications.sound] 部分，可以安全删除
-
 # -----------------------------------------------------------------------------
 # 数据库设置
 # -----------------------------------------------------------------------------
@@ -191,7 +180,7 @@ path = "directory-monitor.db"
 # -----------------------------------------------------------------------------
 [logging]
 # 全局日志文件路径（可选）
-# 设置后，所有监控目标的事件都写入此文件
+# 设置后，tracing 日志输出到此文件（带轮转）
 # 不设置 = 仅输出到终端（stdout）
 # file = "/var/log/directory-monitor.log"
 
@@ -199,9 +188,9 @@ path = "directory-monitor.db"
 # 支持的占位符详见上方 [[watches]].log_format 说明
 format = "%timestamp% [%event%] %path%"
 
-# 日志文件轮转策略:
+# 日志文件轮转策略（仅在设置了 file 时生效）:
 #   "daily"   - 按天轮转
-#   "monthly" - 按月轮转
+#   "monthly" - 按月轮转（实际使用 daily，tracing-appender 不支持 monthly）
 #   "never"   - 不轮转（单文件持续追加）
 rotation = "daily"
 
@@ -211,6 +200,7 @@ rotation = "daily"
 #   "info"  - 一般信息（默认）
 #   "warn"  - 仅警告和错误
 #   "error" - 仅错误
+# 注意: CLI --log_level 参数优先级高于此配置
 level = "info"
 
 # -----------------------------------------------------------------------------

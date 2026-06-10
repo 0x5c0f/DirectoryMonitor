@@ -24,10 +24,10 @@ fn test_config_toml_roundtrip() {
         include: vec!["*.txt".to_string()],
         exclude: vec!["**/.git/**".to_string()],
         event_types: vec!["create".to_string(), "modify".to_string()],
-        log_file: None,
         log_format: None,
         script: None,
         script_mode: "async".to_string(),
+        script_events: vec![],
         email_recipients: vec![],
     });
 
@@ -73,10 +73,10 @@ fn test_config_save_and_load() {
         include: vec![],
         exclude: vec!["*.tmp".to_string()],
         event_types: vec![],
-        log_file: None,
         log_format: None,
         script: None,
         script_mode: "async".to_string(),
+        script_events: vec![],
         email_recipients: vec![],
     });
 
@@ -107,10 +107,10 @@ fn test_watch_config_serialization() {
         include: vec!["*.rs".to_string(), "*.toml".to_string()],
         exclude: vec!["**/target/**".to_string()],
         event_types: vec!["create".to_string(), "modify".to_string()],
-        log_file: Some(PathBuf::from("/var/log/watch.log")),
         log_format: Some("%event% %file%".to_string()),
         script: Some("notify-send 'event'".to_string()),
         script_mode: "async".to_string(),
+        script_events: vec!["create".to_string()],
         email_recipients: vec!["admin@example.com".to_string()],
     };
 
@@ -122,9 +122,9 @@ fn test_watch_config_serialization() {
     assert_eq!(watch2.include, watch.include);
     assert_eq!(watch2.exclude, watch.exclude);
     assert_eq!(watch2.event_types, watch.event_types);
-    assert_eq!(watch2.log_file, watch.log_file);
     assert_eq!(watch2.log_format, watch.log_format);
     assert_eq!(watch2.script, watch.script);
     assert_eq!(watch2.script_mode, watch.script_mode);
+    assert_eq!(watch2.script_events, watch.script_events);
     assert_eq!(watch2.email_recipients, watch.email_recipients);
 }

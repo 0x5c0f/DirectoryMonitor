@@ -585,10 +585,10 @@ async fn test_config_put_watch_partial_update() {
         include: vec!["*.txt".to_string()],
         exclude: vec![],
         event_types: vec![],
-        log_file: None,
         log_format: None,
         script: None,
         script_mode: "async".to_string(),
+        script_events: vec![],
         email_recipients: vec![],
     });
     let ctx = test_context_with_config(config);
@@ -627,10 +627,10 @@ async fn test_config_delete_watch() {
         include: vec![],
         exclude: vec![],
         event_types: vec![],
-        log_file: None,
         log_format: None,
         script: None,
         script_mode: "async".to_string(),
+        script_events: vec![],
         email_recipients: vec![],
     });
     let ctx = test_context_with_config(config);

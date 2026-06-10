@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use dm_core::config::AppConfig;
+use std::path::Path;
 use tracing::info;
 
 mod pipeline;
@@ -66,12 +67,17 @@ use std::path::PathBuf;
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Initialize logging
-    init_logging(&cli.log_level)?;
-
-    // Load configuration
+    // Load configuration first to get logging settings
     let config = AppConfig::load(&cli.config)
         .with_context(|| format!("Failed to load config from {}", cli.config.display()))?;
+
+    // Initialize logging: CLI --log_level overrides config logging.level
+    let level = if cli.log_level != "info" {
+        &cli.log_level
+    } else {
+        &config.logging.level
+    };
+    init_logging(level, config.logging.file.as_deref(), &config.logging.rotation)?;
 
     match cli.command.unwrap_or(Commands::Run) {
         Commands::Validate => {
@@ -108,15 +114,52 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn init_logging(level: &str) -> Result<()> {
+fn init_logging(level: &str, log_file: Option<&Path>, rotation: &str) -> Result<()> {
+    use tracing_appender::rolling;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(level));
 
-    tracing_subscriber::fmt()
-        .with_env_filter(env_filter)
-        .with_target(false)
-        .with_thread_ids(true)
-        .init();
+    if let Some(path) = log_file {
+        let parent = path.parent().unwrap_or(Path::new("."));
+        let file_name = path.file_name().unwrap_or_default();
+
+        let file_appender = match rotation {
+            "daily" => rolling::daily(parent, file_name),
+            // tracing-appender 不支持 monthly，回退到 daily
+            "monthly" => rolling::daily(parent, file_name),
+            _ => rolling::never(parent, file_name),
+        };
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+        // Leak the guard so it lives for the program's lifetime
+        std::mem::forget(guard);
+
+        // File layer
+        let file_layer = tracing_subscriber::fmt::layer()
+            .with_target(false)
+            .with_thread_ids(true)
+            .with_ansi(false)
+            .with_writer(non_blocking);
+
+        // Stdout layer
+        let stdout_layer = tracing_subscriber::fmt::layer()
+            .with_target(false)
+            .with_thread_ids(true);
+
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(file_layer)
+            .with(stdout_layer)
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .with_target(false)
+            .with_thread_ids(true)
+            .init();
+    }
 
     Ok(())
 }

@@ -41,23 +41,9 @@ impl AppConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
-pub struct GeneralConfig {
-    /// Run as a system service.
-    pub service_mode: bool,
-    /// Enable balloon notifications in GUI.
-    pub balloon_notifications: bool,
-}
-
-impl Default for GeneralConfig {
-    fn default() -> Self {
-        Self {
-            service_mode: false,
-            balloon_notifications: true,
-        }
-    }
-}
+pub struct GeneralConfig {}
 
 /// Configuration for a single watched directory.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,8 +62,6 @@ pub struct WatchConfig {
     /// Event types to monitor (empty = all).
     #[serde(default)]
     pub event_types: Vec<String>,
-    /// Log file path for this watch (optional, uses global if not set).
-    pub log_file: Option<PathBuf>,
     /// Custom log format with macro placeholders.
     pub log_format: Option<String>,
     /// Script/command to execute on events.
@@ -85,6 +69,9 @@ pub struct WatchConfig {
     /// Script execution mode: "sync" or "async".
     #[serde(default = "default_script_mode")]
     pub script_mode: String,
+    /// Event types that trigger script execution (empty = use event_types).
+    #[serde(default)]
+    pub script_events: Vec<String>,
     /// Email recipients for this watch.
     #[serde(default)]
     pub email_recipients: Vec<String>,
@@ -105,8 +92,6 @@ pub struct NotificationsConfig {
     pub email: EmailConfig,
     /// Syslog settings.
     pub syslog: SyslogConfig,
-    /// Sound alert settings.
-    pub sound: SoundConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -121,8 +106,6 @@ pub struct EmailConfig {
     pub use_tls: bool,
     /// Batch events before sending (0 = send immediately).
     pub batch_size: usize,
-    /// Seconds to wait before sending batch.
-    pub batch_timeout_secs: u64,
     /// Max emails per minute (throttle).
     pub max_per_minute: u32,
 }
@@ -138,7 +121,6 @@ impl Default for EmailConfig {
             from_address: String::new(),
             use_tls: true,
             batch_size: 0,
-            batch_timeout_secs: 60,
             max_per_minute: 10,
         }
     }
@@ -167,17 +149,6 @@ impl Default for SyslogConfig {
             message_format: None,
         }
     }
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct SoundConfig {
-    pub enabled: bool,
-    /// Path to WAV file to play.
-    pub file: Option<PathBuf>,
-    /// Whether to loop until acknowledged.
-    #[serde(default)]
-    pub loop_until_viewed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

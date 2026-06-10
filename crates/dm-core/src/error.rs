@@ -90,7 +90,4 @@ pub enum NotificationError {
 
     #[error("Script execution error: {0}")]
     Script(#[source] Box<dyn std::error::Error + Send + Sync>),
-
-    #[error("Sound error: {0}")]
-    Sound(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
