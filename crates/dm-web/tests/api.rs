@@ -815,6 +815,44 @@ async fn test_store_pagination() {
     assert_eq!(store.count().await.unwrap(), 20);
 }
 
+#[tokio::test]
+async fn test_store_time_series() {
+    use chrono::{Duration, Utc};
+
+    let store = EventStore::open_memory().unwrap();
+    let now = Utc::now();
+
+    // Insert events at different times within the last hour
+    for i in 0..5 {
+        let mut event = FsEvent::new(
+            EventType::Created,
+            PathBuf::from(format!("/file_{i}")),
+            PathBuf::from("/watch"),
+        );
+        event.timestamp = now - Duration::minutes(50 - i * 10);
+        store.insert(&event).await.unwrap();
+    }
+
+    // Query per-minute buckets for last hour
+    let series = store
+        .time_series(now - Duration::hours(1), 60)
+        .await
+        .unwrap();
+    assert_eq!(series.len(), 5);
+    for (_, cnt) in &series {
+        assert_eq!(*cnt, 1);
+    }
+
+    // Query per-hour buckets for last 7 days
+    let series_7d = store
+        .time_series(now - Duration::days(7), 3600)
+        .await
+        .unwrap();
+    assert!(!series_7d.is_empty());
+    let total: i64 = series_7d.iter().map(|(_, c)| c).sum();
+    assert_eq!(total, 5);
+}
+
 // ── Config roundtrip ──────────────────────────────────────────────────────────
 
 #[test]

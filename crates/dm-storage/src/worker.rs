@@ -45,6 +45,11 @@ enum DbCommand {
         before: DateTime<Utc>,
         resp: oneshot::Sender<Result<usize, StorageError>>,
     },
+    TimeSeries {
+        after: DateTime<Utc>,
+        bucket_secs: i64,
+        resp: oneshot::Sender<Result<Vec<(DateTime<Utc>, i64)>, StorageError>>,
+    },
 }
 
 /// SQLite-backed event store with a dedicated worker thread.
@@ -206,6 +211,27 @@ impl EventStore {
             .map_err(|_| StorageError::NotInitialized)?;
         resp_rx.await.map_err(|_| StorageError::NotInitialized)?
     }
+
+    /// Query event counts aggregated by time bucket.
+    ///
+    /// Returns `(bucket_timestamp, count)` pairs ordered by time ascending.
+    /// `bucket_secs` is the bucket duration in seconds (e.g. 60 for per-minute, 3600 for per-hour).
+    pub async fn time_series(
+        &self,
+        after: DateTime<Utc>,
+        bucket_secs: i64,
+    ) -> Result<Vec<(DateTime<Utc>, i64)>, StorageError> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        self.tx
+            .send(DbCommand::TimeSeries {
+                after,
+                bucket_secs,
+                resp: resp_tx,
+            })
+            .await
+            .map_err(|_| StorageError::NotInitialized)?;
+        resp_rx.await.map_err(|_| StorageError::NotInitialized)?
+    }
 }
 
 /// Run the DB worker loop with a file-based database.
@@ -281,6 +307,14 @@ fn run_worker(db_path: PathBuf, mut rx: mpsc::Receiver<DbCommand>) -> Result<(),
                 let result = do_purge_before(&conn, before);
                 let _ = resp.send(result);
             }
+            DbCommand::TimeSeries {
+                after,
+                bucket_secs,
+                resp,
+            } => {
+                let result = do_time_series(&conn, after, bucket_secs);
+                let _ = resp.send(result);
+            }
         }
     }
 
@@ -353,6 +387,14 @@ fn run_worker_memory(mut rx: mpsc::Receiver<DbCommand>) -> Result<(), StorageErr
             }
             DbCommand::PurgeBefore { before, resp } => {
                 let result = do_purge_before(&conn, before);
+                let _ = resp.send(result);
+            }
+            DbCommand::TimeSeries {
+                after,
+                bucket_secs,
+                resp,
+            } => {
+                let result = do_time_series(&conn, after, bucket_secs);
                 let _ = resp.send(result);
             }
         }
@@ -537,6 +579,38 @@ fn do_purge_before(conn: &Connection, before: DateTime<Utc>) -> Result<usize, St
     )?;
     info!("Purged {} old events", deleted);
     Ok(deleted)
+}
+
+fn do_time_series(
+    conn: &Connection,
+    after: DateTime<Utc>,
+    bucket_secs: i64,
+) -> Result<Vec<(DateTime<Utc>, i64)>, StorageError> {
+    let sql = "
+        SELECT
+            CAST(strftime('%s', timestamp) / ?1 AS INTEGER) * ?1 AS bucket_ts,
+            COUNT(*) AS cnt
+        FROM events
+        WHERE timestamp >= ?2
+        GROUP BY bucket_ts
+        ORDER BY bucket_ts
+    ";
+
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map(params![bucket_secs, after.to_rfc3339()], |row| {
+        let ts: i64 = row.get(0)?;
+        let cnt: i64 = row.get(1)?;
+        Ok((ts, cnt))
+    })?;
+
+    let mut result = Vec::new();
+    for row in rows {
+        let (ts, cnt) = row?;
+        if let Some(dt) = DateTime::from_timestamp(ts, 0) {
+            result.push((dt, cnt));
+        }
+    }
+    Ok(result)
 }
 
 /// Build a WHERE clause and parameter list from filter options.
