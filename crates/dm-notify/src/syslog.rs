@@ -1,4 +1,5 @@
 use dm_core::config::SyslogConfig;
+use dm_core::error::NotificationError;
 use dm_core::event::FsEvent;
 use std::net::UdpSocket;
 use tracing::debug;
@@ -19,7 +20,7 @@ struct SyslogNotifierConfig {
 }
 
 impl SyslogNotifier {
-    pub fn new(config: &SyslogConfig) -> Result<Self, String> {
+    pub fn new(config: &SyslogConfig) -> Result<Self, NotificationError> {
         let facility = match config.facility.to_lowercase().as_str() {
             "kern" => 0,
             "user" => 1,
@@ -45,7 +46,7 @@ impl SyslogNotifier {
         };
 
         let socket =
-            UdpSocket::bind("0.0.0.0:0").map_err(|e| format!("Failed to bind UDP socket: {e}"))?;
+            UdpSocket::bind("0.0.0.0:0").map_err(|e| NotificationError::Syslog(Box::new(e)))?;
 
         Ok(Self {
             config: SyslogNotifierConfig {
@@ -60,7 +61,7 @@ impl SyslogNotifier {
     }
 
     /// Send a syslog message for an event.
-    pub fn notify(&self, event: &FsEvent) -> Result<(), String> {
+    pub fn notify(&self, event: &FsEvent) -> Result<(), NotificationError> {
         let default_format = "%event%: %path%";
         let template = self
             .config
@@ -94,7 +95,7 @@ impl SyslogNotifier {
         let addr = format!("{}:{}", self.config.server, self.config.port);
         self.socket
             .send_to(syslog_msg.as_bytes(), &addr)
-            .map_err(|e| format!("Syslog send error: {e}"))?;
+            .map_err(|e| NotificationError::Syslog(Box::new(e)))?;
 
         debug!("Syslog sent: {}", message);
         Ok(())

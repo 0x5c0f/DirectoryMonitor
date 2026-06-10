@@ -8,9 +8,10 @@ use dm_processor::EventFilter;
 use dm_storage::EventStore;
 use dm_web::EventPayload;
 use http_body_util::BodyExt;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 use tempfile::TempDir;
 use tokio::sync::{broadcast, RwLock};
 use tower::{Service, ServiceExt};
@@ -23,7 +24,7 @@ struct TestContext {
     _config_dir: TempDir,
     store: Option<EventStore>,
     event_tx: broadcast::Sender<EventPayload>,
-    tokens: Arc<RwLock<HashSet<String>>>,
+    tokens: Arc<RwLock<HashMap<String, Instant>>>,
     watcher_manager: Arc<dm_watcher::WatcherManager>,
     filters: Arc<RwLock<Vec<(PathBuf, EventFilter)>>>,
     metrics: Arc<MetricsRegistry>,
@@ -51,7 +52,7 @@ fn test_context_with_config(config: AppConfig) -> TestContext {
         _config_dir: config_dir,
         store: Some(store),
         event_tx,
-        tokens: Arc::new(RwLock::new(HashSet::new())),
+        tokens: Arc::new(RwLock::new(HashMap::new())),
         watcher_manager,
         filters: Arc::new(RwLock::new(Vec::new())),
         metrics: Arc::new(MetricsRegistry::new()),

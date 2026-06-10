@@ -1,11 +1,12 @@
 use dm_core::event::{EventType, FsEvent};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use tracing::{debug, info};
 
 /// Metadata for a single file in a snapshot.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FileMeta {
     pub path: PathBuf,
     pub modified: Option<SystemTime>,
@@ -15,7 +16,7 @@ pub struct FileMeta {
 
 /// A point-in-time snapshot of a directory tree.
 /// Used to detect changes that occurred while monitoring was offline.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DirectorySnapshot {
     /// Path -> metadata mapping.
     pub files: HashMap<PathBuf, FileMeta>,

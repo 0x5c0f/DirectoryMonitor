@@ -1,6 +1,8 @@
 use dm_core::config::WatchConfig;
+use dm_core::error::ConfigError;
 use dm_core::event::{EventType, FsEvent};
 use globset::{Glob, GlobSet, GlobSetBuilder};
+use std::str::FromStr;
 use tracing::debug;
 
 /// Filters events based on include/exclude glob patterns and event types.
@@ -15,21 +17,22 @@ pub struct EventFilter {
 
 impl EventFilter {
     /// Create a filter from a WatchConfig.
-    pub fn from_config(config: &WatchConfig) -> Result<Self, String> {
+    pub fn from_config(config: &WatchConfig) -> Result<Self, ConfigError> {
         let include = if config.include.is_empty() {
             None
         } else {
             let mut builder = GlobSetBuilder::new();
             for pattern in &config.include {
-                let glob = Glob::new(pattern)
-                    .map_err(|e| format!("Invalid include pattern '{}': {e}", pattern))?;
+                let glob = Glob::new(pattern).map_err(|e| ConfigError::InvalidPattern {
+                    pattern: pattern.clone(),
+                    source: Box::new(e),
+                })?;
                 builder.add(glob);
             }
-            Some(
-                builder
-                    .build()
-                    .map_err(|e| format!("Failed to build include set: {e}"))?,
-            )
+            Some(builder.build().map_err(|e| ConfigError::InvalidPattern {
+                pattern: config.include.join(", "),
+                source: Box::new(e),
+            })?)
         };
 
         let exclude = if config.exclude.is_empty() {
@@ -37,33 +40,24 @@ impl EventFilter {
         } else {
             let mut builder = GlobSetBuilder::new();
             for pattern in &config.exclude {
-                let glob = Glob::new(pattern)
-                    .map_err(|e| format!("Invalid exclude pattern '{}': {e}", pattern))?;
+                let glob = Glob::new(pattern).map_err(|e| ConfigError::InvalidPattern {
+                    pattern: pattern.clone(),
+                    source: Box::new(e),
+                })?;
                 builder.add(glob);
             }
-            Some(
-                builder
-                    .build()
-                    .map_err(|e| format!("Failed to build exclude set: {e}"))?,
-            )
+            Some(builder.build().map_err(|e| ConfigError::InvalidPattern {
+                pattern: config.exclude.join(", "),
+                source: Box::new(e),
+            })?)
         };
 
         let event_types: Vec<EventType> = config
             .event_types
             .iter()
-            .filter_map(|s| match s.to_lowercase().as_str() {
-                "created" | "create" => Some(EventType::Created),
-                "modified" | "modify" => Some(EventType::Modified),
-                "attrib" => Some(EventType::Attrib),
-                "close_write" | "closewrite" => Some(EventType::CloseWrite),
-                "close_nowrite" | "closenowrite" | "close" => Some(EventType::CloseNoWrite),
-                "open" | "opened" => Some(EventType::Opened),
-                "moved_to" | "movedto" => Some(EventType::MovedTo),
-                "moved_from" | "movedfrom" => Some(EventType::MovedFrom),
-                "deleted" | "delete" | "remove" => Some(EventType::Deleted),
-                "renamed" | "rename" => Some(EventType::Renamed),
-                "accessed" | "access" => Some(EventType::Accessed),
-                _ => {
+            .filter_map(|s| match EventType::from_str(s) {
+                Ok(et) => Some(et),
+                Err(_) => {
                     debug!("Unknown event type in config: {}", s);
                     None
                 }

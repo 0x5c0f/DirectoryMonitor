@@ -2,7 +2,8 @@ use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 
 use crate::auth::check_auth;
-use crate::server::{AppState, EventPayload};
+use crate::hub::EventPayload;
+use crate::server::AppState;
 
 /// GET /api/events — return paginated events from the database.
 ///

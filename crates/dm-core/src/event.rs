@@ -60,6 +60,63 @@ impl std::fmt::Display for EventType {
     }
 }
 
+/// Error type for `EventType` parsing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseEventTypeError(String);
+
+impl std::fmt::Display for ParseEventTypeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown event type: {}", self.0)
+    }
+}
+
+impl std::error::Error for ParseEventTypeError {}
+
+impl std::str::FromStr for EventType {
+    type Err = ParseEventTypeError;
+
+    /// Parse an event type string (case-insensitive).
+    ///
+    /// Accepts canonical inotify-style strings ("CREATE", "MODIFY", etc.),
+    /// legacy PascalCase ("Created", "Modified", etc.), and
+    /// config-style lowercase ("created", "modify", "close_write", etc.).
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            // Canonical inotify-style
+            "CREATE" => Ok(Self::Created),
+            "MODIFY" => Ok(Self::Modified),
+            "ATTRIB" => Ok(Self::Attrib),
+            "CLOSE_WRITE" => Ok(Self::CloseWrite),
+            "CLOSE_NOWRITE" => Ok(Self::CloseNoWrite),
+            "OPEN" => Ok(Self::Opened),
+            "MOVED_TO" => Ok(Self::MovedTo),
+            "MOVED_FROM" => Ok(Self::MovedFrom),
+            "DELETE" => Ok(Self::Deleted),
+            "RENAME" => Ok(Self::Renamed),
+            "ACCESS" => Ok(Self::Accessed),
+            // Legacy PascalCase
+            "Created" => Ok(Self::Created),
+            "Modified" => Ok(Self::Modified),
+            "Deleted" => Ok(Self::Deleted),
+            "Renamed" => Ok(Self::Renamed),
+            "Accessed" => Ok(Self::Accessed),
+            // Config-style lowercase
+            "created" | "create" => Ok(Self::Created),
+            "modified" | "modify" => Ok(Self::Modified),
+            "attrib" => Ok(Self::Attrib),
+            "close_write" | "closewrite" => Ok(Self::CloseWrite),
+            "close_nowrite" | "closenowrite" | "close" => Ok(Self::CloseNoWrite),
+            "open" | "opened" => Ok(Self::Opened),
+            "moved_to" | "movedto" => Ok(Self::MovedTo),
+            "moved_from" | "movedfrom" => Ok(Self::MovedFrom),
+            "deleted" | "delete" | "remove" => Ok(Self::Deleted),
+            "renamed" | "rename" => Ok(Self::Renamed),
+            "accessed" | "access" => Ok(Self::Accessed),
+            other => Err(ParseEventTypeError(other.to_string())),
+        }
+    }
+}
+
 impl EventType {
     /// Returns true if this event represents a meaningful content change.
     pub fn is_content_change(&self) -> bool {
@@ -164,27 +221,73 @@ impl FsEvent {
     /// Format event using macro-style placeholders.
     /// Supported: %file%, %directory%, %event%, %timestamp%, %path%, %target%, %type%, %user%, %process%
     pub fn format_with(&self, template: &str) -> String {
+        // Pre-compute values to avoid repeated work during scan
         let type_str = match self.is_dir {
             Some(true) => "DIR",
             Some(false) => "FILE",
             None => "",
         };
-        let mut result = template.to_string();
-        result = result.replace("%file%", self.filename().unwrap_or(""));
-        result = result.replace("%directory%", self.directory().unwrap_or(""));
-        result = result.replace("%event%", &self.event_type.to_string());
-        result = result.replace("%timestamp%", &self.timestamp.to_rfc3339());
-        result = result.replace("%path%", self.path.to_str().unwrap_or(""));
-        result = result.replace(
-            "%target%",
-            self.target_path
-                .as_ref()
-                .and_then(|p| p.to_str())
-                .unwrap_or(""),
-        );
-        result = result.replace("%type%", type_str);
-        result = result.replace("%user%", self.user.as_deref().unwrap_or("unknown"));
-        result = result.replace("%process%", self.process.as_deref().unwrap_or("unknown"));
+        let event_str = self.event_type.to_string();
+        let timestamp_str = self.timestamp.to_rfc3339();
+        let file_str = self.filename().unwrap_or("");
+        let dir_str = self.directory().unwrap_or("");
+        let path_str = self.path.to_str().unwrap_or("");
+        let target_str = self
+            .target_path
+            .as_ref()
+            .and_then(|p| p.to_str())
+            .unwrap_or("");
+        let user_str = self.user.as_deref().unwrap_or("unknown");
+        let process_str = self.process.as_deref().unwrap_or("unknown");
+
+        let resolve = |key: &str| -> Option<&str> {
+            match key {
+                "file" => Some(file_str),
+                "directory" => Some(dir_str),
+                "event" => Some(&event_str),
+                "timestamp" => Some(&timestamp_str),
+                "path" => Some(path_str),
+                "target" => Some(target_str),
+                "type" => Some(type_str),
+                "user" => Some(user_str),
+                "process" => Some(process_str),
+                _ => None,
+            }
+        };
+
+        // Single-pass scan: build result in one allocation
+        let mut result = String::with_capacity(template.len());
+        let bytes = template.as_bytes();
+        let len = bytes.len();
+        let mut i = 0;
+
+        while i < len {
+            if bytes[i] == b'%' {
+                // Find the closing '%'
+                if let Some(end) = template[i + 1..].find('%') {
+                    let key = &template[i + 1..i + 1 + end];
+                    if let Some(value) = resolve(key) {
+                        result.push_str(value);
+                        i += 1 + end + 1; // skip %key%
+                        continue;
+                    }
+                }
+                // No matching key or closing '%' — keep the '%' literal
+                result.push('%');
+                i += 1;
+            } else {
+                // Find the next '%' to copy a chunk at once
+                let next_pct = template[i..].find('%').unwrap_or(len - i);
+                if next_pct == 0 {
+                    result.push('%');
+                    i += 1;
+                } else {
+                    result.push_str(&template[i..i + next_pct]);
+                    i += next_pct;
+                }
+            }
+        }
+
         result
     }
 }
@@ -213,6 +316,74 @@ mod tests {
         assert_eq!(EventType::Deleted.to_string(), "DELETE");
         assert_eq!(EventType::Renamed.to_string(), "RENAME");
         assert_eq!(EventType::Accessed.to_string(), "ACCESS");
+    }
+
+    // === EventType FromStr ===
+
+    #[test]
+    fn test_event_type_from_str_canonical() {
+        assert_eq!("CREATE".parse::<EventType>().unwrap(), EventType::Created);
+        assert_eq!("MODIFY".parse::<EventType>().unwrap(), EventType::Modified);
+        assert_eq!("ATTRIB".parse::<EventType>().unwrap(), EventType::Attrib);
+        assert_eq!(
+            "CLOSE_WRITE".parse::<EventType>().unwrap(),
+            EventType::CloseWrite
+        );
+        assert_eq!(
+            "CLOSE_NOWRITE".parse::<EventType>().unwrap(),
+            EventType::CloseNoWrite
+        );
+        assert_eq!("OPEN".parse::<EventType>().unwrap(), EventType::Opened);
+        assert_eq!("MOVED_TO".parse::<EventType>().unwrap(), EventType::MovedTo);
+        assert_eq!(
+            "MOVED_FROM".parse::<EventType>().unwrap(),
+            EventType::MovedFrom
+        );
+        assert_eq!("DELETE".parse::<EventType>().unwrap(), EventType::Deleted);
+        assert_eq!("RENAME".parse::<EventType>().unwrap(), EventType::Renamed);
+        assert_eq!("ACCESS".parse::<EventType>().unwrap(), EventType::Accessed);
+    }
+
+    #[test]
+    fn test_event_type_from_str_legacy() {
+        assert_eq!("Created".parse::<EventType>().unwrap(), EventType::Created);
+        assert_eq!(
+            "Modified".parse::<EventType>().unwrap(),
+            EventType::Modified
+        );
+        assert_eq!("Deleted".parse::<EventType>().unwrap(), EventType::Deleted);
+        assert_eq!("Renamed".parse::<EventType>().unwrap(), EventType::Renamed);
+        assert_eq!(
+            "Accessed".parse::<EventType>().unwrap(),
+            EventType::Accessed
+        );
+    }
+
+    #[test]
+    fn test_event_type_from_str_config_style() {
+        assert_eq!("created".parse::<EventType>().unwrap(), EventType::Created);
+        assert_eq!("create".parse::<EventType>().unwrap(), EventType::Created);
+        assert_eq!("modify".parse::<EventType>().unwrap(), EventType::Modified);
+        assert_eq!(
+            "closewrite".parse::<EventType>().unwrap(),
+            EventType::CloseWrite
+        );
+        assert_eq!(
+            "close".parse::<EventType>().unwrap(),
+            EventType::CloseNoWrite
+        );
+        assert_eq!("opened".parse::<EventType>().unwrap(), EventType::Opened);
+        assert_eq!("movedto".parse::<EventType>().unwrap(), EventType::MovedTo);
+        assert_eq!("remove".parse::<EventType>().unwrap(), EventType::Deleted);
+        assert_eq!("rename".parse::<EventType>().unwrap(), EventType::Renamed);
+        assert_eq!("access".parse::<EventType>().unwrap(), EventType::Accessed);
+    }
+
+    #[test]
+    fn test_event_type_from_str_unknown() {
+        assert!("UNKNOWN".parse::<EventType>().is_err());
+        assert!("".parse::<EventType>().is_err());
+        assert!("foobar".parse::<EventType>().is_err());
     }
 
     // === EventType classification ===

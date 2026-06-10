@@ -1,3 +1,4 @@
+use crate::StorageError;
 use rusqlite::Connection;
 use tracing::info;
 
@@ -29,9 +30,8 @@ CREATE TABLE IF NOT EXISTS schema_version (
 ";
 
 /// Initialize the database schema.
-pub fn initialize(conn: &Connection) -> Result<(), String> {
-    conn.execute_batch(SCHEMA_SQL)
-        .map_err(|e| format!("Failed to create schema: {e}"))?;
+pub fn initialize(conn: &Connection) -> Result<(), StorageError> {
+    conn.execute_batch(SCHEMA_SQL)?;
 
     // Set schema version
     let current_version = get_version(conn)?;
@@ -39,8 +39,7 @@ pub fn initialize(conn: &Connection) -> Result<(), String> {
         conn.execute(
             "INSERT INTO schema_version (version) VALUES (?1)",
             [SCHEMA_VERSION],
-        )
-        .map_err(|e| format!("Failed to set schema version: {e}"))?;
+        )?;
         info!("Database schema initialized at version {}", SCHEMA_VERSION);
     } else if current_version < SCHEMA_VERSION {
         // Run migrations
@@ -53,7 +52,7 @@ pub fn initialize(conn: &Connection) -> Result<(), String> {
 }
 
 /// Run database migrations from the given version to the current version.
-fn migrate(conn: &Connection, from_version: i32) -> Result<(), String> {
+fn migrate(conn: &Connection, from_version: i32) -> Result<(), StorageError> {
     info!(
         "Migrating database schema from version {} to {}",
         from_version, SCHEMA_VERSION
@@ -61,27 +60,23 @@ fn migrate(conn: &Connection, from_version: i32) -> Result<(), String> {
 
     if from_version < 2 {
         // v1 → v2: add is_dir column
-        conn.execute("ALTER TABLE events ADD COLUMN is_dir INTEGER", [])
-            .map_err(|e| format!("Failed to add is_dir column: {e}"))?;
+        conn.execute("ALTER TABLE events ADD COLUMN is_dir INTEGER", [])?;
         info!("Migration v1→v2: added is_dir column");
     }
 
     // Update schema version
-    conn.execute("UPDATE schema_version SET version = ?1", [SCHEMA_VERSION])
-        .map_err(|e| format!("Failed to update schema version: {e}"))?;
+    conn.execute("UPDATE schema_version SET version = ?1", [SCHEMA_VERSION])?;
 
     info!("Database schema migrated to version {}", SCHEMA_VERSION);
     Ok(())
 }
 
 /// Get the current schema version (0 if not initialized).
-pub fn get_version(conn: &Connection) -> Result<i32, String> {
-    let version: i32 = conn
-        .query_row(
-            "SELECT COALESCE(MAX(version), 0) FROM schema_version",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|e| format!("Failed to read schema version: {e}"))?;
+pub fn get_version(conn: &Connection) -> Result<i32, StorageError> {
+    let version: i32 = conn.query_row(
+        "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+        [],
+        |row| row.get(0),
+    )?;
     Ok(version)
 }

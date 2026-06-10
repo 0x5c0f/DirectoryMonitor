@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use dm_core::config::AppConfig;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tracing::info;
 
 mod pipeline;
@@ -60,8 +60,6 @@ enum Commands {
     #[cfg(windows)]
     RunService,
 }
-
-use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -137,7 +135,8 @@ fn init_logging(level: &str, log_file: Option<&Path>, rotation: &str) -> Result<
             _ => rolling::never(parent, file_name),
         };
         let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-        // Leak the guard so it lives for the program's lifetime
+        // Intentionally leak the guard: it must outlive main() to keep the
+        // non-blocking writer alive. Dropping it would flush & close the log file.
         std::mem::forget(guard);
 
         // File layer

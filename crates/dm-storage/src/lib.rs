@@ -1,6 +1,13 @@
+//! SQLite-backed persistent event storage for Directory Monitor.
+//!
+//! Provides an async event store backed by SQLite with WAL mode:
+//! - [`EventStore`] — thread-safe store using a dedicated worker thread
+//! - [`EventQuery`] — flexible query builder with pagination and filtering
+//! - Time-series aggregation for dashboard charts
+
 pub mod query;
 pub mod schema;
-pub mod sqlite;
+mod shared;
 pub mod worker;
 
 pub use query::EventQuery;

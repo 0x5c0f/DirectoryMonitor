@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
 use dm_core::config::AppConfig;
+use dm_metrics::MetricsRegistry;
 use dm_processor::{EventDeduplicator, EventFilter};
 use dm_storage::EventStore;
 use dm_watcher::{FsWatcher, WatchEvent};
+use dm_web::EventPayload;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,6 +19,12 @@ pub(crate) type MonitorComponents = (
     Arc<Mutex<EventDeduplicator>>,
     Option<EventStore>,
 );
+
+/// Optional hooks for extending event processing with metrics and web broadcast.
+pub(crate) struct ProcessHooks {
+    pub metrics: Option<Arc<MetricsRegistry>>,
+    pub web_tx: Option<broadcast::Sender<EventPayload>>,
+}
 
 /// Create shared monitoring components: (watcher, event_sender, filters, dedup, store).
 pub(crate) fn setup_monitoring(config: &AppConfig) -> Result<MonitorComponents> {
@@ -68,6 +76,8 @@ pub(crate) fn setup_monitoring(config: &AppConfig) -> Result<MonitorComponents> 
 }
 
 /// Process a watch event through the pipeline.
+///
+/// If `hooks` is provided, records metrics and broadcasts events to web clients.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn process_watch_event(
     watch_event: WatchEvent,
@@ -78,10 +88,18 @@ pub(crate) async fn process_watch_event(
     email_notifier: &Option<Arc<dm_notify::EmailNotifier>>,
     syslog_notifier: &Option<dm_notify::SyslogNotifier>,
     script_executor: &Arc<dm_notify::ScriptExecutor>,
+    hooks: Option<&ProcessHooks>,
 ) {
     // Unpack batch into individual events
     let events = match watch_event {
-        WatchEvent::Batch(events) => events,
+        WatchEvent::Batch(events) => {
+            if let Some(h) = hooks {
+                if let Some(ref m) = h.metrics {
+                    m.batches_flushed.inc();
+                }
+            }
+            events
+        }
         WatchEvent::Event(event) => vec![event],
         WatchEvent::Error(msg) => {
             error!("Watcher error: {}", msg);
@@ -97,7 +115,14 @@ pub(crate) async fn process_watch_event(
                 dedup.process(event)
             };
 
-            let Some(event) = event else { continue };
+            let Some(event) = event else {
+                if let Some(h) = hooks {
+                    if let Some(ref m) = h.metrics {
+                        m.events_deduped.inc();
+                    }
+                }
+                continue;
+            };
 
             // Apply event type filter (from config event_types)
             let filtered = filters
@@ -106,7 +131,22 @@ pub(crate) async fn process_watch_event(
                 .map(|(_, f)| f.matches(&event))
                 .unwrap_or(true); // No filter = allow all
             if !filtered {
+                if let Some(h) = hooks {
+                    if let Some(ref m) = h.metrics {
+                        m.events_dropped.inc();
+                    }
+                }
                 continue;
+            }
+
+            // Record metrics
+            if let Some(h) = hooks {
+                if let Some(ref m) = h.metrics {
+                    m.record_event(
+                        &event.event_type.to_string(),
+                        &event.watch_root.to_string_lossy(),
+                    );
+                }
             }
 
             // Log the event
@@ -124,6 +164,14 @@ pub(crate) async fn process_watch_event(
             if let Some(ref store) = store {
                 if let Err(e) = store.insert(&event).await {
                     error!("Failed to store event: {e}");
+                }
+            }
+
+            // Broadcast to web clients
+            if let Some(h) = hooks {
+                if let Some(ref web_tx) = h.web_tx {
+                    let payload = EventPayload::from(&event);
+                    let _ = web_tx.send(payload);
                 }
             }
 

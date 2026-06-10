@@ -1,3 +1,4 @@
+use dm_core::error::WatcherError;
 use dm_core::event::{EventType, FsEvent};
 use notify::event::{AccessKind, AccessMode, CreateKind, ModifyKind, RemoveKind, RenameMode};
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -32,7 +33,7 @@ impl FsWatcher {
     pub fn new(
         tx: broadcast::Sender<WatchEvent>,
         debounce_duration: Duration,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, WatcherError> {
         // Channel from notify (sync) to our processing thread
         let (notify_tx, notify_rx) = mpsc::channel();
 
@@ -46,7 +47,7 @@ impl FsWatcher {
             },
             config,
         )
-        .map_err(|e| format!("Failed to create watcher: {e}"))?;
+        .map_err(|e| WatcherError::Init(format!("Failed to create watcher: {e}")))?;
 
         // Spawn a thread to receive events, debounce, and forward to async channel
         let handle = std::thread::spawn(move || {
@@ -67,12 +68,12 @@ impl FsWatcher {
     }
 
     /// Add a directory to watch based on a WatchConfig.
-    pub fn add_watch(&mut self, config: &dm_core::config::WatchConfig) -> Result<(), String> {
+    pub fn add_watch(&mut self, config: &dm_core::config::WatchConfig) -> Result<(), WatcherError> {
         if !config.path.exists() {
-            return Err(format!(
+            return Err(WatcherError::Init(format!(
                 "Watch path does not exist: {}",
                 config.path.display()
-            ));
+            )));
         }
 
         let recursive = if config.recursive {
@@ -83,7 +84,10 @@ impl FsWatcher {
 
         self._watcher
             .watch(&config.path, recursive)
-            .map_err(|e| format!("Failed to watch {}: {e}", config.path.display()))?;
+            .map_err(|e| WatcherError::AddWatch {
+                path: config.path.display().to_string(),
+                source: Box::new(e),
+            })?;
 
         info!(
             "Watching: {} (recursive: {})",
@@ -94,10 +98,13 @@ impl FsWatcher {
     }
 
     /// Remove a directory from watching.
-    pub fn remove_watch(&mut self, path: &Path) -> Result<(), String> {
+    pub fn remove_watch(&mut self, path: &Path) -> Result<(), WatcherError> {
         self._watcher
             .unwatch(path)
-            .map_err(|e| format!("Failed to unwatch {}: {e}", path.display()))?;
+            .map_err(|e| WatcherError::RemoveWatch {
+                path: path.display().to_string(),
+                source: Box::new(e),
+            })?;
         info!("Stopped watching: {}", path.display());
         Ok(())
     }
@@ -290,4 +297,191 @@ fn convert_event(event: &Event) -> Option<FsEvent> {
 /// Try to determine the watch root (parent directory being watched).
 fn find_watch_root(path: &Path) -> Option<PathBuf> {
     path.parent().map(|p| p.to_path_buf())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use notify::event::{
+        AccessKind, AccessMode, CreateKind, DataChange, MetadataKind, ModifyKind, RemoveKind,
+        RenameMode,
+    };
+
+    fn make_notify_event(kind: EventKind, paths: Vec<PathBuf>) -> Event {
+        let mut event = Event::new(kind);
+        event.paths = paths;
+        event
+    }
+
+    // === Create events ===
+
+    #[test]
+    fn test_convert_create_file() {
+        let event = make_notify_event(
+            EventKind::Create(CreateKind::File),
+            vec![PathBuf::from("/test/file.txt")],
+        );
+        let result = convert_event(&event).unwrap();
+        assert_eq!(result.event_type, EventType::Created);
+        assert_eq!(result.path, PathBuf::from("/test/file.txt"));
+        assert_eq!(result.is_dir, Some(false));
+        assert!(result.target_path.is_none());
+    }
+
+    #[test]
+    fn test_convert_create_folder() {
+        let event = make_notify_event(
+            EventKind::Create(CreateKind::Folder),
+            vec![PathBuf::from("/test/newdir")],
+        );
+        let result = convert_event(&event).unwrap();
+        assert_eq!(result.event_type, EventType::Created);
+        assert_eq!(result.is_dir, Some(true));
+    }
+
+    // === Modify events ===
+
+    #[test]
+    fn test_convert_modify_data() {
+        let event = make_notify_event(
+            EventKind::Modify(ModifyKind::Data(DataChange::Any)),
+            vec![PathBuf::from("/test/file.txt")],
+        );
+        let result = convert_event(&event).unwrap();
+        assert_eq!(result.event_type, EventType::Modified);
+    }
+
+    #[test]
+    fn test_convert_modify_metadata() {
+        let event = make_notify_event(
+            EventKind::Modify(ModifyKind::Metadata(MetadataKind::Any)),
+            vec![PathBuf::from("/test/file.txt")],
+        );
+        let result = convert_event(&event).unwrap();
+        assert_eq!(result.event_type, EventType::Attrib);
+    }
+
+    // === Rename events ===
+
+    #[test]
+    fn test_convert_rename_both_skipped() {
+        let event = make_notify_event(
+            EventKind::Modify(ModifyKind::Name(RenameMode::Both)),
+            vec![
+                PathBuf::from("/test/old.txt"),
+                PathBuf::from("/test/new.txt"),
+            ],
+        );
+        assert!(convert_event(&event).is_none());
+    }
+
+    #[test]
+    fn test_convert_rename_from() {
+        let event = make_notify_event(
+            EventKind::Modify(ModifyKind::Name(RenameMode::From)),
+            vec![PathBuf::from("/test/old.txt")],
+        );
+        let result = convert_event(&event).unwrap();
+        assert_eq!(result.event_type, EventType::MovedFrom);
+    }
+
+    #[test]
+    fn test_convert_rename_to() {
+        let event = make_notify_event(
+            EventKind::Modify(ModifyKind::Name(RenameMode::To)),
+            vec![PathBuf::from("/test/new.txt")],
+        );
+        let result = convert_event(&event).unwrap();
+        assert_eq!(result.event_type, EventType::MovedTo);
+    }
+
+    // === Remove events ===
+
+    #[test]
+    fn test_convert_remove_file() {
+        let event = make_notify_event(
+            EventKind::Remove(RemoveKind::File),
+            vec![PathBuf::from("/test/file.txt")],
+        );
+        let result = convert_event(&event).unwrap();
+        assert_eq!(result.event_type, EventType::Deleted);
+        assert_eq!(result.is_dir, Some(false));
+    }
+
+    #[test]
+    fn test_convert_remove_folder() {
+        let event = make_notify_event(
+            EventKind::Remove(RemoveKind::Folder),
+            vec![PathBuf::from("/test/olddir")],
+        );
+        let result = convert_event(&event).unwrap();
+        assert_eq!(result.event_type, EventType::Deleted);
+        assert_eq!(result.is_dir, Some(true));
+    }
+
+    // === Access events ===
+
+    #[test]
+    fn test_convert_access_read() {
+        let event = make_notify_event(
+            EventKind::Access(AccessKind::Read),
+            vec![PathBuf::from("/test/file.txt")],
+        );
+        let result = convert_event(&event).unwrap();
+        assert_eq!(result.event_type, EventType::Accessed);
+    }
+
+    #[test]
+    fn test_convert_access_open() {
+        let event = make_notify_event(
+            EventKind::Access(AccessKind::Open(AccessMode::Any)),
+            vec![PathBuf::from("/test/file.txt")],
+        );
+        let result = convert_event(&event).unwrap();
+        assert_eq!(result.event_type, EventType::Opened);
+    }
+
+    #[test]
+    fn test_convert_access_close_write() {
+        let event = make_notify_event(
+            EventKind::Access(AccessKind::Close(AccessMode::Write)),
+            vec![PathBuf::from("/test/file.txt")],
+        );
+        let result = convert_event(&event).unwrap();
+        assert_eq!(result.event_type, EventType::CloseWrite);
+    }
+
+    #[test]
+    fn test_convert_access_close_read() {
+        let event = make_notify_event(
+            EventKind::Access(AccessKind::Close(AccessMode::Read)),
+            vec![PathBuf::from("/test/file.txt")],
+        );
+        let result = convert_event(&event).unwrap();
+        assert_eq!(result.event_type, EventType::CloseNoWrite);
+    }
+
+    // === Edge cases ===
+
+    #[test]
+    fn test_convert_unknown_event_kind() {
+        let event = make_notify_event(EventKind::Any, vec![PathBuf::from("/test/file.txt")]);
+        assert!(convert_event(&event).is_none());
+    }
+
+    #[test]
+    fn test_convert_empty_paths() {
+        let event = make_notify_event(EventKind::Create(CreateKind::File), vec![]);
+        assert!(convert_event(&event).is_none());
+    }
+
+    #[test]
+    fn test_convert_watch_root_is_parent() {
+        let event = make_notify_event(
+            EventKind::Create(CreateKind::File),
+            vec![PathBuf::from("/home/user/project/file.txt")],
+        );
+        let result = convert_event(&event).unwrap();
+        assert_eq!(result.watch_root, PathBuf::from("/home/user/project"));
+    }
 }

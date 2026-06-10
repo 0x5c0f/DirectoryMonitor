@@ -1,3 +1,4 @@
+use dm_core::error::NotificationError;
 use dm_core::event::FsEvent;
 use std::process::Command;
 use tokio::process::Command as AsyncCommand;
@@ -22,7 +23,7 @@ impl ScriptExecutor {
         script: &str,
         event: &FsEvent,
         args_template: &[String],
-    ) -> Result<(), String> {
+    ) -> Result<(), NotificationError> {
         let expanded_args: Vec<String> = args_template
             .iter()
             .map(|arg| event.format_with(arg))
@@ -53,12 +54,15 @@ impl ScriptExecutor {
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     error!("Script failed with {}: {}", output.status, stderr);
-                    return Err(format!("Script exited with {}: {}", output.status, stderr));
+                    return Err(NotificationError::ScriptExit(format!(
+                        "{}: {}",
+                        output.status, stderr
+                    )));
                 }
             }
             Err(e) => {
                 error!("Failed to execute script '{}': {}", script, e);
-                return Err(format!("Failed to execute '{script}': {e}"));
+                return Err(NotificationError::Script(Box::new(e)));
             }
         }
 
@@ -71,7 +75,7 @@ impl ScriptExecutor {
         script: &str,
         event: &FsEvent,
         args_template: &[String],
-    ) -> Result<(), String> {
+    ) -> Result<(), NotificationError> {
         let expanded_args: Vec<String> = args_template
             .iter()
             .map(|arg| event.format_with(arg))
@@ -91,14 +95,14 @@ impl ScriptExecutor {
                 if output.status.success() {
                     Ok(())
                 } else {
-                    Err(format!(
-                        "Script exited with {}: {}",
+                    Err(NotificationError::ScriptExit(format!(
+                        "{}: {}",
                         output.status,
                         String::from_utf8_lossy(&output.stderr)
-                    ))
+                    )))
                 }
             }
-            Err(e) => Err(format!("Failed to execute '{script}': {e}")),
+            Err(e) => Err(NotificationError::Script(Box::new(e))),
         }
     }
 }
