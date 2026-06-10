@@ -77,7 +77,11 @@ async fn main() -> Result<()> {
     } else {
         &config.logging.level
     };
-    init_logging(level, config.logging.file.as_deref(), &config.logging.rotation)?;
+    init_logging(
+        level,
+        config.logging.file.as_deref(),
+        &config.logging.rotation,
+    )?;
 
     match cli.command.unwrap_or(Commands::Run) {
         Commands::Validate => {

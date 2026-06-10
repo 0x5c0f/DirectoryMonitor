@@ -8,6 +8,8 @@ use std::thread;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, info};
 
+type TimeSeriesResult = Vec<(DateTime<Utc>, i64)>;
+
 /// Commands sent to the DB worker thread.
 enum DbCommand {
     Insert {
@@ -48,7 +50,7 @@ enum DbCommand {
     TimeSeries {
         after: DateTime<Utc>,
         bucket_secs: i64,
-        resp: oneshot::Sender<Result<Vec<(DateTime<Utc>, i64)>, StorageError>>,
+        resp: oneshot::Sender<Result<TimeSeriesResult, StorageError>>,
     },
 }
 
@@ -220,7 +222,7 @@ impl EventStore {
         &self,
         after: DateTime<Utc>,
         bucket_secs: i64,
-    ) -> Result<Vec<(DateTime<Utc>, i64)>, StorageError> {
+    ) -> Result<TimeSeriesResult, StorageError> {
         let (resp_tx, resp_rx) = oneshot::channel();
         self.tx
             .send(DbCommand::TimeSeries {
@@ -585,7 +587,7 @@ fn do_time_series(
     conn: &Connection,
     after: DateTime<Utc>,
     bucket_secs: i64,
-) -> Result<Vec<(DateTime<Utc>, i64)>, StorageError> {
+) -> Result<TimeSeriesResult, StorageError> {
     let sql = "
         SELECT
             CAST(strftime('%s', timestamp) / ?1 AS INTEGER) * ?1 AS bucket_ts,

@@ -26,20 +26,18 @@ pub(crate) async fn metrics_chart_handler(
 
         // 1h: per-minute buckets (60s)
         if let Ok(rows) = store.time_series(now - Duration::hours(1), 60).await {
-            chart["event_rate_1h"] = json!(
-                rows.iter()
-                    .map(|(ts, cnt)| json!({"timestamp": ts, "value": cnt}))
-                    .collect::<Vec<_>>()
-            );
+            chart["event_rate_1h"] = json!(rows
+                .iter()
+                .map(|(ts, cnt)| json!({"timestamp": ts, "value": cnt}))
+                .collect::<Vec<_>>());
         }
 
         // 7d: per-hour buckets (3600s)
         if let Ok(rows) = store.time_series(now - Duration::days(7), 3600).await {
-            chart["event_rate_7d"] = json!(
-                rows.iter()
-                    .map(|(ts, cnt)| json!({"timestamp": ts, "value": cnt}))
-                    .collect::<Vec<_>>()
-            );
+            chart["event_rate_7d"] = json!(rows
+                .iter()
+                .map(|(ts, cnt)| json!({"timestamp": ts, "value": cnt}))
+                .collect::<Vec<_>>());
         }
     }
 

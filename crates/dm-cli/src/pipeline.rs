@@ -180,8 +180,7 @@ pub(crate) async fn process_watch_event(
                                     if let Err(e) = executor.execute_sync(&script, &event, &[]) {
                                         error!("Script execution failed: {e}");
                                     }
-                                } else if let Err(e) =
-                                    executor.execute(&script, &event, &[]).await
+                                } else if let Err(e) = executor.execute(&script, &event, &[]).await
                                 {
                                     error!("Script execution failed: {e}");
                                 }
