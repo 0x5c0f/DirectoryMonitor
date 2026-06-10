@@ -1,7 +1,8 @@
 use axum::http::{HeaderMap, StatusCode};
+use std::time::Instant;
 use tracing::info;
 
-use crate::server::AppState;
+use crate::server::{AppState, TOKEN_TTL_SECS};
 
 /// Check if auth is required and token is valid.
 /// Returns Ok(()) if access is allowed, Err(status) otherwise.
@@ -15,8 +16,12 @@ pub(crate) async fn check_auth(headers: &HeaderMap, state: &AppState) -> Result<
     match token {
         Some(t) => {
             let tokens = state.tokens.read().await;
-            if tokens.contains(&t) {
-                Ok(())
+            if let Some(created) = tokens.get(&t) {
+                if created.elapsed().as_secs() < TOKEN_TTL_SECS {
+                    Ok(())
+                } else {
+                    Err(StatusCode::UNAUTHORIZED)
+                }
             } else {
                 Err(StatusCode::UNAUTHORIZED)
             }
@@ -76,7 +81,11 @@ pub(crate) async fn auth_login_handler(
     // Constant-time comparison to prevent timing attacks
     if constant_time_eq(provided.as_bytes(), password.as_bytes()) {
         let token = uuid::Uuid::new_v4().to_string();
-        state.tokens.write().await.insert(token.clone());
+        state
+            .tokens
+            .write()
+            .await
+            .insert(token.clone(), Instant::now());
         info!("Auth: login successful");
         Ok(axum::response::Json(serde_json::json!({
             "ok": true,
@@ -105,11 +114,15 @@ pub(crate) async fn auth_verify_handler(
     match extract_token(&headers) {
         Some(t) => {
             let tokens = state.tokens.read().await;
-            if tokens.contains(&t) {
-                Ok(axum::response::Json(serde_json::json!({
-                    "ok": true,
-                    "auth_required": true
-                })))
+            if let Some(created) = tokens.get(&t) {
+                if created.elapsed().as_secs() < TOKEN_TTL_SECS {
+                    Ok(axum::response::Json(serde_json::json!({
+                        "ok": true,
+                        "auth_required": true
+                    })))
+                } else {
+                    Err(StatusCode::UNAUTHORIZED)
+                }
             } else {
                 Err(StatusCode::UNAUTHORIZED)
             }

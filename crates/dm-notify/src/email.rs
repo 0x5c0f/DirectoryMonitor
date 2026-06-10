@@ -1,4 +1,5 @@
 use dm_core::config::EmailConfig;
+use dm_core::error::NotificationError;
 use dm_core::event::FsEvent;
 use lettre::message::header::ContentType;
 use lettre::transport::smtp::authentication::Credentials;
@@ -36,7 +37,11 @@ impl EmailNotifier {
     }
 
     /// Send a notification for a single event.
-    pub async fn notify(&self, event: &FsEvent, recipients: &[String]) -> Result<(), String> {
+    pub async fn notify(
+        &self,
+        event: &FsEvent,
+        recipients: &[String],
+    ) -> Result<(), NotificationError> {
         if !self.config.enabled {
             return Ok(());
         }
@@ -56,7 +61,7 @@ impl EmailNotifier {
     }
 
     /// Flush all pending events as a single email.
-    pub async fn flush(&self, recipients: &[String]) -> Result<(), String> {
+    pub async fn flush(&self, recipients: &[String]) -> Result<(), NotificationError> {
         let events: Vec<FsEvent> = self.pending.lock().await.drain(..).collect();
         if events.is_empty() {
             return Ok(());
@@ -64,7 +69,11 @@ impl EmailNotifier {
         self.send_batch(&events, recipients).await
     }
 
-    async fn send_single(&self, event: &FsEvent, recipients: &[String]) -> Result<(), String> {
+    async fn send_single(
+        &self,
+        event: &FsEvent,
+        recipients: &[String],
+    ) -> Result<(), NotificationError> {
         self.check_rate_limit().await?;
 
         let subject = format!("[DirMon] {} - {}", event.event_type, event.path.display());
@@ -80,7 +89,11 @@ impl EmailNotifier {
         self.send_email(&subject, &body, recipients).await
     }
 
-    async fn send_batch(&self, events: &[FsEvent], recipients: &[String]) -> Result<(), String> {
+    async fn send_batch(
+        &self,
+        events: &[FsEvent],
+        recipients: &[String],
+    ) -> Result<(), NotificationError> {
         self.check_rate_limit().await?;
 
         let subject = format!("[DirMon] {} events detected", events.len());
@@ -103,13 +116,13 @@ impl EmailNotifier {
         subject: &str,
         body: &str,
         recipients: &[String],
-    ) -> Result<(), String> {
+    ) -> Result<(), NotificationError> {
         let credentials =
             Credentials::new(self.config.username.clone(), self.config.password.clone());
 
         let mailer = if self.config.use_tls {
             AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&self.config.smtp_server)
-                .map_err(|e| format!("SMTP relay error: {e}"))?
+                .map_err(|e| NotificationError::Email(Box::new(e)))?
                 .credentials(credentials)
                 .port(self.config.smtp_port)
                 .build()
@@ -126,15 +139,15 @@ impl EmailNotifier {
                     self.config
                         .from_address
                         .parse()
-                        .map_err(|e| format!("Invalid from address: {e}"))?,
+                        .map_err(|e| NotificationError::Email(Box::new(e)))?,
                 )
                 .to(recipient
                     .parse()
-                    .map_err(|e| format!("Invalid recipient '{recipient}': {e}"))?)
+                    .map_err(|e| NotificationError::Email(Box::new(e)))?)
                 .subject(subject)
                 .header(ContentType::TEXT_PLAIN)
                 .body(body.to_string())
-                .map_err(|e| format!("Failed to build email: {e}"))?;
+                .map_err(|e| NotificationError::Email(Box::new(e)))?;
 
             match mailer.send(email).await {
                 Ok(_) => info!("Email sent to {}", recipient),
@@ -147,7 +160,7 @@ impl EmailNotifier {
         Ok(())
     }
 
-    async fn check_rate_limit(&self) -> Result<(), String> {
+    async fn check_rate_limit(&self) -> Result<(), NotificationError> {
         let mut limiter = self.rate_limiter.lock().await;
 
         if limiter.last_send.elapsed() >= Duration::from_secs(60) {
@@ -156,7 +169,9 @@ impl EmailNotifier {
         }
 
         if limiter.sent_this_minute >= self.config.max_per_minute {
-            return Err("Email rate limit exceeded".to_string());
+            return Err(NotificationError::Email(Box::new(std::io::Error::other(
+                "Email rate limit exceeded",
+            ))));
         }
 
         Ok(())

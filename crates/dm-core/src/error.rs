@@ -9,9 +9,6 @@ pub enum DmError {
     #[error("Watcher error: {0}")]
     Watcher(#[source] WatcherError),
 
-    #[error("Storage error: {0}")]
-    Storage(#[source] StorageError),
-
     #[error("Notification error: {0}")]
     Notification(#[from] NotificationError),
 
@@ -41,19 +38,6 @@ pub enum WatcherError {
     Io(#[from] std::io::Error),
 }
 
-/// Storage-related errors.
-#[derive(Debug, Error)]
-pub enum StorageError {
-    #[error("Database error: {0}")]
-    Database(#[source] Box<dyn std::error::Error + Send + Sync>),
-
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("Serialization error: {0}")]
-    Serialization(String),
-}
-
 /// Configuration-related errors.
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -77,6 +61,12 @@ pub enum ConfigError {
 
     #[error("Invalid watch path: {0}")]
     InvalidWatchPath(String),
+
+    #[error("Invalid filter pattern '{pattern}': {source}")]
+    InvalidPattern {
+        pattern: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
 
 /// Notification-related errors.
@@ -90,4 +80,7 @@ pub enum NotificationError {
 
     #[error("Script execution error: {0}")]
     Script(#[source] Box<dyn std::error::Error + Send + Sync>),
+
+    #[error("Script exited with error: {0}")]
+    ScriptExit(String),
 }

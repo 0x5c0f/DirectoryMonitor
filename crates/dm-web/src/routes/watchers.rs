@@ -86,7 +86,7 @@ pub(crate) async fn watchers_reload_handler(
             error!("Failed to reload watchers: {e}");
             Ok(axum::response::Json(serde_json::json!({
                 "ok": false,
-                "error": e,
+                "error": e.to_string(),
             })))
         }
     }

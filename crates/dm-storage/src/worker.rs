@@ -1,7 +1,8 @@
 use crate::schema;
+use crate::shared::{build_where_clause, row_to_event};
 use crate::StorageError;
 use chrono::{DateTime, Utc};
-use dm_core::event::{EventType, FsEvent};
+use dm_core::event::FsEvent;
 use rusqlite::{params, Connection};
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -245,7 +246,7 @@ fn run_worker(db_path: PathBuf, mut rx: mpsc::Receiver<DbCommand>) -> Result<(),
     conn.pragma_update(None, "synchronous", "NORMAL")?;
     conn.pragma_update(None, "cache_size", -64000)?; // 64MB cache
 
-    schema::initialize(&conn).map_err(StorageError::MigrationFailed)?;
+    schema::initialize(&conn)?;
 
     while let Some(cmd) = rx.blocking_recv() {
         match cmd {
@@ -327,7 +328,7 @@ fn run_worker(db_path: PathBuf, mut rx: mpsc::Receiver<DbCommand>) -> Result<(),
 fn run_worker_memory(mut rx: mpsc::Receiver<DbCommand>) -> Result<(), StorageError> {
     let conn = Connection::open_in_memory()?;
     conn.pragma_update(None, "journal_mode", "WAL")?;
-    schema::initialize(&conn).map_err(StorageError::MigrationFailed)?;
+    schema::initialize(&conn)?;
 
     while let Some(cmd) = rx.blocking_recv() {
         match cmd {
@@ -481,66 +482,7 @@ fn do_query(
         param_values.iter().map(|p| p.as_ref()).collect();
 
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(params_ref.as_slice(), |row| {
-        let id_str: String = row.get(0)?;
-        let timestamp_str: String = row.get(1)?;
-        let event_type_str: String = row.get(2)?;
-        let path_str: String = row.get(3)?;
-        let target_path_str: Option<String> = row.get(4)?;
-        let is_dir: Option<bool> = row.get(5)?;
-        let user: Option<String> = row.get(6)?;
-        let process: Option<String> = row.get(7)?;
-        let watch_root_str: String = row.get(8)?;
-
-        let id = id_str.parse::<uuid::Uuid>().map_err(|e| {
-            rusqlite::Error::InvalidParameterName(format!("Invalid UUID '{}': {}", id_str, e))
-        })?;
-        let timestamp = DateTime::parse_from_rfc3339(&timestamp_str)
-            .map(|dt| dt.with_timezone(&Utc))
-            .map_err(|e| {
-                rusqlite::Error::InvalidParameterName(format!(
-                    "Invalid timestamp '{}': {}",
-                    timestamp_str, e
-                ))
-            })?;
-        let event_type = match event_type_str.as_str() {
-            "CREATE" => EventType::Created,
-            "MODIFY" => EventType::Modified,
-            "ATTRIB" => EventType::Attrib,
-            "CLOSE_WRITE" => EventType::CloseWrite,
-            "CLOSE_NOWRITE" => EventType::CloseNoWrite,
-            "OPEN" => EventType::Opened,
-            "MOVED_TO" => EventType::MovedTo,
-            "MOVED_FROM" => EventType::MovedFrom,
-            "DELETE" => EventType::Deleted,
-            "RENAME" => EventType::Renamed,
-            "ACCESS" => EventType::Accessed,
-            // Legacy fallbacks
-            "Created" => EventType::Created,
-            "Modified" => EventType::Modified,
-            "Deleted" => EventType::Deleted,
-            "Renamed" => EventType::Renamed,
-            "Accessed" => EventType::Accessed,
-            other => {
-                return Err(rusqlite::Error::InvalidParameterName(format!(
-                    "Unknown event type: {}",
-                    other
-                )));
-            }
-        };
-
-        Ok(FsEvent {
-            id,
-            timestamp,
-            event_type,
-            path: PathBuf::from(path_str),
-            target_path: target_path_str.map(PathBuf::from),
-            is_dir,
-            user,
-            process,
-            watch_root: PathBuf::from(watch_root_str),
-        })
-    })?;
+    let rows = stmt.query_map(params_ref.as_slice(), row_to_event)?;
 
     let mut events = Vec::new();
     for row in rows {
@@ -613,51 +555,4 @@ fn do_time_series(
         }
     }
     Ok(result)
-}
-
-/// Build a WHERE clause and parameter list from filter options.
-fn build_where_clause(
-    event_types: &[String],
-    watch_root: Option<&str>,
-    search: Option<&str>,
-    after: Option<&str>,
-    before: Option<&str>,
-    is_dir: Option<bool>,
-) -> (String, Vec<Box<dyn rusqlite::types::ToSql>>) {
-    let mut clause = String::new();
-    let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-
-    if !event_types.is_empty() {
-        let placeholders: Vec<&str> = event_types.iter().map(|_| "?").collect();
-        clause.push_str(&format!(" AND event_type IN ({})", placeholders.join(",")));
-        for et in event_types {
-            param_values.push(Box::new(et.clone()));
-        }
-    }
-    if let Some(root) = watch_root {
-        clause.push_str(" AND watch_root = ?");
-        param_values.push(Box::new(root.to_string()));
-    }
-    if let Some(s) = search {
-        if !s.is_empty() {
-            clause.push_str(" AND (path LIKE ? OR target_path LIKE ?)");
-            let pattern = format!("%{}%", s);
-            param_values.push(Box::new(pattern.clone()));
-            param_values.push(Box::new(pattern));
-        }
-    }
-    if let Some(after_ts) = after {
-        clause.push_str(" AND timestamp >= ?");
-        param_values.push(Box::new(after_ts.to_string()));
-    }
-    if let Some(before_ts) = before {
-        clause.push_str(" AND timestamp <= ?");
-        param_values.push(Box::new(before_ts.to_string()));
-    }
-    if let Some(dir) = is_dir {
-        clause.push_str(" AND is_dir = ?");
-        param_values.push(Box::new(dir));
-    }
-
-    (clause, param_values)
 }

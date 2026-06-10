@@ -1,5 +1,6 @@
 use crate::watcher::{FsWatcher, WatchEvent};
 use dm_core::config::{AppConfig, WatchConfig};
+use dm_core::error::WatcherError;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -41,17 +42,17 @@ impl WatcherManager {
 
     /// Add a new watcher for the given config.
     /// Returns the watcher ID on success.
-    pub async fn add_watcher(&self, config: WatchConfig) -> Result<usize, String> {
+    pub async fn add_watcher(&self, config: WatchConfig) -> Result<usize, WatcherError> {
         let mut watchers = self.watchers.lock().await;
         let mut next_id = self.next_id.lock().await;
 
         // Check if path is already being watched
         for entry in watchers.values() {
             if entry.config.path == config.path {
-                return Err(format!(
+                return Err(WatcherError::Init(format!(
                     "Path {} is already being watched",
                     config.path.display()
-                ));
+                )));
             }
         }
 
@@ -82,7 +83,7 @@ impl WatcherManager {
     }
 
     /// Remove a watcher by ID.
-    pub async fn remove_watcher(&self, id: usize) -> Result<PathBuf, String> {
+    pub async fn remove_watcher(&self, id: usize) -> Result<PathBuf, WatcherError> {
         let mut watchers = self.watchers.lock().await;
 
         if let Some(entry) = watchers.remove(&id) {
@@ -90,7 +91,7 @@ impl WatcherManager {
             info!("Removed watcher[{}] for {}", id, path.display());
             Ok(path)
         } else {
-            Err(format!("Watcher {} not found", id))
+            Err(WatcherError::Init(format!("Watcher {} not found", id)))
         }
     }
 
@@ -119,7 +120,7 @@ impl WatcherManager {
 
     /// Reload watchers based on new config.
     /// Compares current watchers with new config and applies differences.
-    pub async fn reload(&self, new_config: &AppConfig) -> Result<ReloadResult, String> {
+    pub async fn reload(&self, new_config: &AppConfig) -> Result<ReloadResult, WatcherError> {
         let mut watchers = self.watchers.lock().await;
         let mut next_id = self.next_id.lock().await;
 

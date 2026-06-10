@@ -1,6 +1,7 @@
 use dm_core::event::FsEvent;
+use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use tracing::{debug, info};
 
 /// Collects events into batches and flushes them based on:
@@ -84,9 +85,6 @@ pub fn spawn_flush_task(
         }
     })
 }
-
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 #[cfg(test)]
 mod tests {

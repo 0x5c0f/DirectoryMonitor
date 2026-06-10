@@ -9,15 +9,19 @@ use dm_metrics::MetricsRegistry;
 use dm_processor::EventFilter;
 use dm_storage::EventStore;
 use dm_watcher::WatcherManager;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::{broadcast, RwLock};
 use tracing::info;
 
 use crate::auth::{auth_login_handler, auth_status_handler, auth_verify_handler};
+
+/// Token time-to-live (24 hours).
+pub(crate) const TOKEN_TTL_SECS: u64 = 24 * 60 * 60;
 use crate::frontend::INDEX_HTML;
-pub use crate::hub::EventPayload;
+use crate::hub::EventPayload;
 use crate::routes::{config, events, metrics, watchers};
 
 /// Shared application state for the web server.
@@ -27,10 +31,20 @@ pub struct AppState {
     pub config_path: PathBuf,
     pub store: Option<EventStore>,
     pub event_tx: broadcast::Sender<EventPayload>,
-    pub tokens: Arc<RwLock<HashSet<String>>>,
+    /// Active tokens mapped to their creation time.
+    pub tokens: Arc<RwLock<HashMap<String, Instant>>>,
     pub watcher_manager: Arc<WatcherManager>,
     pub filters: Arc<RwLock<Vec<(PathBuf, EventFilter)>>>,
     pub metrics: Arc<MetricsRegistry>,
+}
+
+impl std::fmt::Debug for AppState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppState")
+            .field("config_path", &self.config_path)
+            .field("has_store", &self.store.is_some())
+            .finish_non_exhaustive()
+    }
 }
 
 /// Build the axum `Router` with all routes and shared state.
@@ -75,7 +89,7 @@ pub async fn run_server(
     watcher_manager: Arc<WatcherManager>,
     filters: Arc<RwLock<Vec<(PathBuf, EventFilter)>>>,
     metrics: Arc<MetricsRegistry>,
-) -> Result<(), String> {
+) -> std::io::Result<()> {
     let addr = format!("{}:{}", config.server.bind, config.server.port);
 
     let state = AppState {
@@ -83,23 +97,35 @@ pub async fn run_server(
         config_path,
         store,
         event_tx,
-        tokens: Arc::new(RwLock::new(HashSet::new())),
+        tokens: Arc::new(RwLock::new(HashMap::new())),
         watcher_manager,
         filters,
         metrics,
     };
 
+    // Spawn token cleanup task (removes expired tokens every 5 minutes)
+    let cleanup_tokens = state.tokens.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+        loop {
+            interval.tick().await;
+            let mut tokens = cleanup_tokens.write().await;
+            let before = tokens.len();
+            tokens.retain(|_, created| created.elapsed().as_secs() < TOKEN_TTL_SECS);
+            let removed = before - tokens.len();
+            if removed > 0 {
+                info!("Cleaned up {removed} expired tokens");
+            }
+        }
+    });
+
     let app = build_router(state);
 
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .map_err(|e| format!("Failed to bind {addr}: {e}"))?;
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
 
     info!("Web server listening on http://{addr}");
 
-    axum::serve(listener, app)
-        .await
-        .map_err(|e| format!("Server error: {e}"))
+    axum::serve(listener, app).await
 }
 
 // ── Pages ─────────────────────────────────────────────────────────────────────
@@ -122,8 +148,9 @@ async fn ws_handler(
     if !password.is_empty() {
         let token = params.get("token").cloned().unwrap_or_default();
         let tokens = state.tokens.read().await;
-        if !tokens.contains(&token) {
-            return Err(StatusCode::UNAUTHORIZED);
+        match tokens.get(&token) {
+            Some(created) if created.elapsed().as_secs() < TOKEN_TTL_SECS => {}
+            _ => return Err(StatusCode::UNAUTHORIZED),
         }
     }
 

@@ -43,6 +43,7 @@ impl AppConfig {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct GeneralConfig {}
 
 /// Configuration for a single watched directory.

@@ -9,9 +9,9 @@ use std::time::Duration;
 use tokio::sync::{broadcast, Mutex, RwLock};
 use tracing::{error, info, warn};
 
-use dm_web::server::EventPayload;
+use dm_web::EventPayload;
 
-use crate::pipeline::{process_watch_event, setup_monitoring};
+use crate::pipeline::{process_watch_event, setup_monitoring, ProcessHooks};
 
 /// Run in monitor-only mode (no web server).
 pub(crate) async fn run_monitor(config: AppConfig) -> Result<()> {
@@ -57,6 +57,7 @@ pub(crate) async fn run_monitor(config: AppConfig) -> Result<()> {
                     &email_notifier,
                     &syslog_notifier,
                     &script_executor,
+                    None,
                 )
                 .await;
             }
@@ -149,80 +150,53 @@ pub(crate) async fn run_serve(
 
     // Spawn event processing task
     let process_tx = event_tx.clone();
-    let web_tx = web_event_tx.clone();
     let process_config = config.clone();
     let process_filters = shared_filters.clone();
     let process_store = store.clone();
     let process_dedup = deduplicator.clone();
-    let process_metrics = metrics.clone();
+
+    // Create notification senders for the processing task
+    let email_notifier = if config.notifications.email.enabled {
+        Some(Arc::new(dm_notify::EmailNotifier::new(
+            config.notifications.email.clone(),
+        )))
+    } else {
+        None
+    };
+    let syslog_notifier = if config.notifications.syslog.enabled {
+        Some(
+            dm_notify::SyslogNotifier::new(&config.notifications.syslog)
+                .map_err(|e| anyhow::anyhow!("Failed to initialize syslog notifier: {e}"))?,
+        )
+    } else {
+        None
+    };
+    let script_executor = Arc::new(dm_notify::ScriptExecutor::new(true));
+
+    let hooks = ProcessHooks {
+        metrics: Some(metrics.clone()),
+        web_tx: Some(web_event_tx.clone()),
+    };
 
     tokio::spawn(async move {
         let mut rx = process_tx.subscribe();
         loop {
             match rx.recv().await {
                 Ok(watch_event) => {
-                    // Unpack batch into individual events
-                    let events = match watch_event {
-                        WatchEvent::Batch(events) => {
-                            process_metrics.batches_flushed.inc();
-                            events
-                        }
-                        WatchEvent::Event(event) => vec![event],
-                        WatchEvent::Error(msg) => {
-                            error!("Watcher error: {}", msg);
-                            continue;
-                        }
-                    };
-
-                    for event in events {
-                        // Deduplicate
-                        let event = {
-                            let mut dedup = process_dedup.lock().await;
-                            dedup.process(event)
-                        };
-                        let Some(event) = event else {
-                            process_metrics.events_deduped.inc();
-                            continue;
-                        };
-
-                        // Apply filter
-                        let filters = process_filters.read().await;
-                        let filtered = filters
-                            .iter()
-                            .find(|(root, _)| event.path.starts_with(root))
-                            .map(|(_, f)| f.matches(&event))
-                            .unwrap_or(true);
-                        if !filtered {
-                            process_metrics.events_dropped.inc();
-                            continue;
-                        }
-
-                        // Record metrics
-                        process_metrics.record_event(
-                            &event.event_type.to_string(),
-                            &event.watch_root.to_string_lossy(),
-                        );
-
-                        // Log the event
-                        let log_format = process_config
-                            .watches
-                            .iter()
-                            .find(|w| event.path.starts_with(&w.path))
-                            .and_then(|w| w.log_format.as_deref())
-                            .unwrap_or(&process_config.logging.format);
-                        info!("{}", event.format_with(log_format));
-
-                        // Store in database
-                        if let Some(ref store) = process_store {
-                            if let Err(e) = store.insert(&event).await {
-                                error!("Failed to store event: {e}");
-                            }
-                        }
-
-                        // Send to web clients
-                        let payload = EventPayload::from(&event);
-                        let _ = web_tx.send(payload);
-                    }
+                    // Get the current filters
+                    let filters = process_filters.read().await;
+                    process_watch_event(
+                        watch_event,
+                        &filters,
+                        &process_dedup,
+                        &process_store,
+                        &process_config,
+                        &email_notifier,
+                        &syslog_notifier,
+                        &script_executor,
+                        Some(&hooks),
+                    )
+                    .await;
                 }
                 Err(broadcast::error::RecvError::Lagged(n)) => {
                     warn!("Event processing lagged, skipped {n} events");
@@ -255,7 +229,13 @@ pub(crate) async fn run_serve(
     #[cfg(unix)]
     tokio::spawn(async move {
         use tokio::signal::unix::{signal, SignalKind};
-        let mut stream = signal(SignalKind::hangup()).expect("Failed to register SIGHUP handler");
+        let mut stream = match signal(SignalKind::hangup()) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("Failed to register SIGHUP handler: {e}");
+                return;
+            }
+        };
         loop {
             stream.recv().await;
             info!("Received SIGHUP, reloading configuration...");
@@ -342,8 +322,7 @@ pub(crate) fn take_snapshot(path: &Path, output: &Path) -> Result<()> {
     let snapshot = DirectorySnapshot::new(path, true)
         .with_context(|| format!("Failed to snapshot {}", path.display()))?;
 
-    let json = serde_json::to_string_pretty(&snapshot.files.len())
-        .context("Failed to serialize snapshot")?;
+    let json = serde_json::to_string_pretty(&snapshot).context("Failed to serialize snapshot")?;
     std::fs::write(output, json)
         .with_context(|| format!("Failed to write {}", output.display()))?;
 
