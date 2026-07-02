@@ -59,12 +59,17 @@ uninstall: check-root
 	@echo "  $(DATA_DIR)"
 	@echo "Remove manually if not needed."
 
-## Stop service, replace binary, restart
+## Stop service, replace binary, update service unit, restart
 upgrade: check-root
 	@echo "Upgrading Directory Monitor..."
 	@systemctl stop $(SERVICE) 2>/dev/null || true
 	@cp $(APP_NAME) $(BIN_DIR)/$(APP_NAME)
 	@chmod 755 $(BIN_DIR)/$(APP_NAME)
+	@echo "  Binary: updated"
+	@cp $(SERVICE) $(SYSTEMD_DIR)/$(SERVICE)
+	@echo "  Service unit: updated"
+	@systemctl daemon-reload
+	@echo "  Systemd: reloaded"
 	@systemctl start $(SERVICE)
 	@echo "Upgraded and restarted."
 
