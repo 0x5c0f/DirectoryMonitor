@@ -107,6 +107,14 @@ make uninstall     # 卸载
 - **设置标签页** — 编辑全局配置、管理监控规则
 - **监控器标签页** — 查看活跃监控器、重载配置
 
+| 仪表盘 | 事件日志 |
+|:------:|:--------:|
+| ![仪表盘截图](images/dashboard.png) | ![事件日志截图](images/event_log.png) |
+
+| 设置 |
+|:----:|
+| ![设置截图](images/setting.png) |
+
 ### Prometheus 监控
 
 ```bash

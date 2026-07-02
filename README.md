@@ -107,6 +107,14 @@ Open the address in a browser to access the dashboard. Features:
 - **Settings tab** — Edit global configuration and manage watch rules
 - **Watchers tab** — View active watchers and reload configuration
 
+| Dashboard | Event Log |
+|:---------:|:---------:|
+| ![Dashboard screenshot](images/dashboard.png) | ![Event Log screenshot](images/event_log.png) |
+
+| Settings |
+|:-------:|
+| ![Settings screenshot](images/setting.png) |
+
 ### Prometheus Monitoring
 
 ```bash
