@@ -16,9 +16,9 @@ SyslogIdentifier=directory-monitor
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/var/lib/directory-monitor /var/log/directory-monitor
 ConfigurationDirectory=directory-monitor
 StateDirectory=directory-monitor
+LogsDirectory=directory-monitor
 WorkingDirectory=/var/lib/directory-monitor
 
 [Install]
